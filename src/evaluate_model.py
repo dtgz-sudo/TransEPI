@@ -76,17 +76,27 @@ if __name__ == "__main__":
         args.gpu = -1
 
     config = json.load(open(args.config))
-    
+
     config["data_opts"]["datasets"] = args.test_data
     config["model_opts"]["rand_shift"] = False
 
     all_data = epi_dataset.EPIDataset(**config["data_opts"])
+    # 进行正负里均衡采样
+    metainfo = all_data.metainfo
+    num_pos = sum(metainfo['label'])
+    pos_indices = [i for i in range(len(metainfo['label'])) if metainfo['label'][i] == 1]
+    neg_indices = [i for i in range(len(metainfo['label'])) if metainfo['label'][i] == 0]
+    new_neg_indices = np.random.choice(neg_indices, num_pos, replace=False)
+    new_indices = list(pos_indices) + list(new_neg_indices)
+    # 对metainfo中的每个键对应的值进行欠采样
+    for k in metainfo:
+        metainfo[k] = np.array([metainfo[k][i] for i in new_indices])
 
     config["model_opts"]["in_dim"] = all_data.feat_dim
     config["model_opts"]["seq_len"] = config["data_opts"]["seq_len"] // config["data_opts"]["bin_size"]
 
     labels = all_data.metainfo["label"]
-    
+
     chroms = np.array(all_data.metainfo["chrom"])
     enh_names = np.array(all_data.metainfo["enh_name"])
     prom_names = np.array(all_data.metainfo["prom_name"])
@@ -103,11 +113,11 @@ if __name__ == "__main__":
 
     test_loader = DataLoader(
             all_data,
-            shuffle=False, 
+            shuffle=False,
             batch_size=args.batch_size,
             num_workers=args.num_workers
         )
-    
+
     if args.gpu >= 0:
         os.environ["CUDA_VISIBLE_DEVICES"] = str(args.gpu)
         device = torch.device("cuda")
@@ -144,5 +154,6 @@ if __name__ == "__main__":
     print("## testing chroms: {}".format(args.test_chroms))
     print("## label classes: {}".format(label_counts))
     print("AUC:\t{:.4f}\nAUPR:\t{:.4f}({:.4f})".format(AUC, AUPR, AUPR / label_counts[1]))
+    index = 0
 
 

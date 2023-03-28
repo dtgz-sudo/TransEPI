@@ -26,26 +26,26 @@ def custom_open(fn):
 
 def get_args():
     p = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    #p.add_argument()
+    # p.add_argument()
 
     p.add_argument('--seed', type=int, default=2020)
     return p
 
 
 class EPIDataset(Dataset):
-    def __init__(self, 
-            datasets: Union[str, List], 
-            feats_config: Dict[str, str], 
-            feats_order: List[str], 
-            seq_len: int=2500000, 
-            bin_size: int=500, 
-            use_mark: bool=False,
-            mask_neighbor=False,
-            mask_window=False,
-            sin_encoding=False,
-            rand_shift=False,
-            
-            **kwargs):
+    def __init__(self,
+                 datasets: Union[str, List],
+                 feats_config: Dict[str, str],
+                 feats_order: List[str],
+                 seq_len: int = 2500000,
+                 bin_size: int = 500,
+                 use_mark: bool = False,
+                 mask_neighbor=False,
+                 mask_window=False,
+                 sin_encoding=False,
+                 rand_shift=False,
+
+                 **kwargs):
         super(EPIDataset, self).__init__()
 
         if type(datasets) is str:
@@ -61,34 +61,33 @@ class EPIDataset(Dataset):
         self.feats_order = list(feats_order)
         self.num_feats = len(feats_order)
         self.feats_config = json.load(open(feats_config))
-        if "_location" in self.feats_config:
-            location =self.feats_config["_location"] 
+        if "_location" in self.feats_config:  # 是否指定了路径否则就是当前路径
+            location = self.feats_config["_location"]
             del self.feats_config["_location"]
             for cell, assays in self.feats_config.items():
                 for a, fn in assays.items():
                     self.feats_config[cell][a] = os.path.join(location, fn)
         else:
-            location = os.path.dirname(os.path.abspath(feats_config))
+            location = os.path.dirname(os.path.abspath(feats_config))  # json数据组装起来
             for cell, assays in self.feats_config.items():
                 for a, fn in assays.items():
-                    self.feats_config[cell][a] = os.path.join(location, fn)
+                    self.feats_config[cell][a] = os.path.join(location, fn)  # 全部的数据组装起来
 
-
-        self.feats = dict() # cell_name -> feature_name -> chrom > features (array)
+        self.feats = dict()  # cell_name -> feature_name -> chrom > features (array)
         self.chrom_bins = {
-                chrom: (length // bin_size) for chrom, length in hg19_chromsize.items()
-                }
+            chrom: (length // bin_size) for chrom, length in hg19_chromsize.items()
+        }  # 每个染色体上面bin的数量
 
         self.samples = list()
         self.metainfo = {
-                'label': list(), 
-                'dist': list(), 
-                'chrom': list(), 
-                'cell': list(),
-                'enh_name': list(),
-                'prom_name': list(),
-                'shift': list()
-                }
+            'label': list(),
+            'dist': list(),
+            'chrom': list(),
+            'cell': list(),
+            'enh_name': list(),
+            'prom_name': list(),
+            'shift': list()
+        }
 
         self.sin_encoding = sin_encoding
         self.use_mark = use_mark
@@ -96,7 +95,7 @@ class EPIDataset(Dataset):
         self.mask_neighbor = mask_neighbor
         self.rand_shift = rand_shift
 
-        self.load_datasets()
+        self.load_datasets()  # 加载数据
         self.feat_dim = len(self.feats_order) + 1
         if self.use_mark:
             self.feat_dim += 1
@@ -107,9 +106,11 @@ class EPIDataset(Dataset):
         for fn in self.datasets:
             with custom_open(fn) as infile:
                 for l in infile:
-                    fields = l.strip().split('\t')
+                    fields = l.strip().split(
+                        '\t')  # '1\t92874.5\tchr9\t613609\t614420\tchr9:613609-614420|HMEC|EH37E0985881\tchr9\t705389\t707389\tchr9:706888-706889|HMEC|ENSG00000107104.14|ENST00000382293.3|+\n'
                     label, dist, chrom, enh_start, enh_end, enh_name, \
-                            _, prom_start, prom_end, prom_name = fields[0:10]
+                        _, prom_start, prom_end, prom_name = fields[
+                                                             0:10]  # 标签 距离 染色体号 增强子开始位置 结束位置 增强子名字 染色体号（-）  启动子开始位置 结束位置 启动子名字
                     knock_range = None
                     if len(fields) > 10:
                         assert len(fields) == 11
@@ -119,32 +120,32 @@ class EPIDataset(Dataset):
                             knock_start, knock_end = int(knock_start), int(knock_end)
                             knock_range.append((knock_start, knock_end))
 
-                    cell = enh_name.split('|')[1]
-                    strand = prom_name.split('|')[-1]
+                    cell = enh_name.split('|')[1]  # 细胞名称
+                    strand = prom_name.split('|')[-1]  # 染色体正链（+）还是负链（-）
 
-                    enh_coord = (int(enh_start) + int(enh_end)) // 2
+                    enh_coord = (int(enh_start) + int(enh_end)) // 2  # 计算出增强子的中心位置
                     p_start, p_end = prom_name.split('|')[0].split(':')[-1].split('-')
-                    tss_coord = (int(p_start) + int(p_end)) // 2
+                    tss_coord = (int(p_start) + int(p_end)) // 2  # 启动子中心位置
 
-                    seq_begin = (enh_coord + tss_coord) // 2 - self.seq_len // 2
-                    seq_end = (enh_coord + tss_coord) // 2 + self.seq_len // 2
-                    
+                    seq_begin = (enh_coord + tss_coord) // 2 - self.seq_len // 2  # 选取的序列区间的开始位置
+                    seq_end = (enh_coord + tss_coord) // 2 + self.seq_len // 2  # 选取的序列区间的结束位置
+
                     # enh_bin = (enh_coord - seq_begin) // self.bin_size
-                    enh_bin = enh_coord // self.bin_size
+                    enh_bin = enh_coord // self.bin_size#增强子bin的个数
                     # prom_bin = (tss_coord - seq_begin) // self.bin_size
-                    prom_bin = tss_coord // self.bin_size
-                    start_bin, stop_bin = seq_begin // self.bin_size, seq_end // self.bin_size
+                    prom_bin = tss_coord // self.bin_size#启动子bin的个数
+                    start_bin, stop_bin = seq_begin // self.bin_size, seq_end // self.bin_size#开始bin的ID 结束bin的ID
 
                     left_pad_bin, right_pad_bin = 0, 0
                     if start_bin < 0:
                         left_pad_bin = abs(start_bin)
                         start_bin = 0
-                    if stop_bin > self.chrom_bins[chrom]: 
-                        right_pad_bin = stop_bin - self.chrom_bins[chrom] 
+                    if stop_bin > self.chrom_bins[chrom]:
+                        right_pad_bin = stop_bin - self.chrom_bins[chrom]
                         stop_bin = self.chrom_bins[chrom]
 
                     shift = 0
-                    if self.rand_shift:
+                    if self.rand_shift:#如果 self.rand_shift 为 True，则在序列区间和增强子/启动子的位置差距较大时进行随机平移。
                         if left_pad_bin > 0:
                             shift = left_pad_bin
                             start_bin = -left_pad_bin
@@ -161,9 +162,9 @@ class EPIDataset(Dataset):
                                 shift = 0
 
                     self.samples.append((
-                        start_bin + shift, stop_bin + shift, 
-                        left_pad_bin, right_pad_bin, 
-                        enh_bin, prom_bin, 
+                        start_bin + shift, stop_bin + shift,
+                        left_pad_bin, right_pad_bin,
+                        enh_bin, prom_bin,
                         cell, chrom, np.log2(1 + 500000 / float(dist)),
                         int(label), knock_range
                     ))
@@ -188,9 +189,10 @@ class EPIDataset(Dataset):
 
     def __len__(self):
         return len(self.samples)
-    
+
     def __getitem__(self, idx):
-        start_bin, stop_bin, left_pad, right_pad, enh_bin, prom_bin, cell, chrom, dist, label, knock_range = self.samples[idx]
+        start_bin, stop_bin, left_pad, right_pad, enh_bin, prom_bin, cell, chrom, dist, label, knock_range = \
+        self.samples[idx]
         enh_idx = enh_bin - start_bin + left_pad
         prom_idx = prom_bin - start_bin + left_pad
 
@@ -201,9 +203,9 @@ class EPIDataset(Dataset):
             ar = torch.cat((ar, self.feats[cell][feat][chrom][start_bin:stop_bin].view(1, -1)), dim=0)
         ar = torch.cat((
             torch.zeros((self.num_feats, left_pad)),
-            ar, 
+            ar,
             torch.zeros((self.num_feats, right_pad))
-            ), dim=1)
+        ), dim=1)
 
         if knock_range is not None:
             dim, length = ar.size()
@@ -243,7 +245,6 @@ class EPIDataset(Dataset):
         else:
             pos_enc = self.sym_log(pos_enc.min(dim=0)[0]).view(1, -1)
         ar = torch.cat((torch.as_tensor(pos_enc, dtype=torch.float), ar), dim=0)
-        
 
         if self.use_mark:
             mark = [0 for i in range(self.num_bins)]
@@ -258,7 +259,9 @@ class EPIDataset(Dataset):
                 ar
             ), dim=0)
 
-        return ar, torch.as_tensor([dist], dtype=torch.float), torch.as_tensor([enh_idx], dtype=torch.float), torch.as_tensor([prom_idx], dtype=torch.float), torch.as_tensor([label], dtype=torch.float)
+        return ar, torch.as_tensor([dist], dtype=torch.float), torch.as_tensor([enh_idx],
+                                                                               dtype=torch.float), torch.as_tensor(
+            [prom_idx], dtype=torch.float), torch.as_tensor([label], dtype=torch.float)
 
     def sym_log(self, ar):
         sign = torch.sign(ar)
@@ -270,34 +273,34 @@ if __name__ == "__main__":
     p = get_args()
     args = p.parse_args()
     np.random.seed(args.seed)
-
+    # CTCF_DNase_6histone.500.json
     all_data = EPIDataset(
-            datasets=["../data/BENGI/GM12878.HiC-Benchmark.v3.tsv"],
-            feats_config="../data/genomic_features/CTCF_DNase_6histone.500.json",
-            feats_order=["CTCF", "DNase", "H3K27ac", "H3K4me1", "H3K4me3"],
-            seq_len=2500000,
-            bin_size=500,
-            mask_window=True,
-            mask_neighbor=True,
-            sin_encoding=True,
-            rand_shift=True
-        )
+        datasets=["../data/BENGI/GM12878.HiC-Benchmark.v3.tsv"],
+        feats_config="../data/genomic_features/CTCF_DNase_6histone.500.json",
+        feats_order=["CTCF", "DNase", "H3K27ac", "H3K4me1", "H3K4me3"],
+        seq_len=2500000,
+        bin_size=500,
+        mask_window=True,
+        mask_neighbor=True,
+        sin_encoding=True,
+        rand_shift=True
+    )
 
     for i in range(0, len(all_data), 411):
         np.savetxt(
-                "data_{}".format(i),
-                all_data.__getitem__(i)[0].T,
-                fmt="%.4f",
-                header="{}\t{}\t{}\n{}".format(all_data.metainfo["label"][i], all_data.metainfo["enh_name"][i], all_data.metainfo["prom_name"][i], all_data.samples[i])
-            )
-
+            "data_{}".format(i),
+            all_data.__getitem__(i)[0].T,
+            fmt="%.4f",
+            header="{}\t{}\t{}\n{}".format(all_data.metainfo["label"][i], all_data.metainfo["enh_name"][i],
+                                           all_data.metainfo["prom_name"][i], all_data.samples[i])
+        )
 
 #     batch_size = 16
 #     data_loader = DataLoader(all_data, batch_size=batch_size, shuffle=False, num_workers=8)
-# 
+#
 #     # # import epi_models
-#     # # model = epi_models.LstmAttModel(in_dim=6, 
-#     # #         lstm_size=32, lstm_layer=2, lstm_dropout=0.2, 
+#     # # model = epi_models.LstmAttModel(in_dim=6,
+#     # #         lstm_size=32, lstm_layer=2, lstm_dropout=0.2,
 #     # #         da=64, r=32,
 #     # #         fc=[64, 32], fc_dropout=0.2)
 #     # import epi_models
@@ -322,4 +325,4 @@ if __name__ == "__main__":
 #         #     print(k, all_data.metainfo[k][i])
 #         # if i > 200:
 #         #     break
-# 
+#
