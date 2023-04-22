@@ -183,7 +183,10 @@ class EPIDataset(Dataset):
                     if cell not in self.feats:
                         self.feats[cell] = dict()
                         for feat in self.feats_order:
-                            self.feats[cell][feat] = torch.load(self.feats_config[cell][feat])
+                            try:
+                              self.feats[cell][feat] = torch.load(self.feats_config[cell][feat])
+                            except:
+                                print("文件不存在:",self.feats_config[cell][feat])
         for k in self.metainfo:
             self.metainfo[k] = np.array(self.metainfo[k])
 

@@ -81,16 +81,6 @@ if __name__ == "__main__":
     config["model_opts"]["rand_shift"] = False
 
     all_data = epi_dataset.EPIDataset(**config["data_opts"])
-    # 进行正负里均衡采样
-    metainfo = all_data.metainfo
-    num_pos = sum(metainfo['label'])
-    pos_indices = [i for i in range(len(metainfo['label'])) if metainfo['label'][i] == 1]
-    neg_indices = [i for i in range(len(metainfo['label'])) if metainfo['label'][i] == 0]
-    new_neg_indices = np.random.choice(neg_indices, num_pos, replace=False)
-    new_indices = list(pos_indices) + list(new_neg_indices)
-    # 对metainfo中的每个键对应的值进行欠采样
-    for k in metainfo:
-        metainfo[k] = np.array([metainfo[k][i] for i in new_indices])
 
     config["model_opts"]["in_dim"] = all_data.feat_dim
     config["model_opts"]["seq_len"] = config["data_opts"]["seq_len"] // config["data_opts"]["bin_size"]
@@ -154,6 +144,82 @@ if __name__ == "__main__":
     print("## testing chroms: {}".format(args.test_chroms))
     print("## label classes: {}".format(label_counts))
     print("AUC:\t{:.4f}\nAUPR:\t{:.4f}({:.4f})".format(AUC, AUPR, AUPR / label_counts[1]))
-    index = 0
+
+
+    def calc_roc_auc(y_true, y_pred):
+        import matplotlib.pyplot as plt
+        from sklearn.metrics import roc_curve, auc
+
+        # 计算FPR, TPR和阈值
+        fpr, tpr, thresholds = roc_curve(y_true, y_pred)
+        # 计算AUC
+        roc_auc = auc(fpr, tpr)
+
+        # 绘制ROC曲线
+        plt.plot(fpr, tpr, color='darkorange', lw=2, label='ROC curve (area = %0.2f)' % roc_auc)
+        plt.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--')
+        plt.xlim([0.0, 1.0])
+        plt.ylim([0.0, 1.05])
+        plt.xlabel('False Positive Rate')
+        plt.ylabel('True Positive Rate')
+        plt.title('Receiver operating characteristic')
+        plt.legend(loc="lower right")
+        plt.show()
+        print("roc_auc：", roc_auc)
+
+
+    def f1_score(y_true, y_pred, average='binary'):
+        """计算F1-score
+
+        参数：
+        y_true：实际标签，可以是列表或numpy数组
+        y_pred：预测标签，可以是列表或numpy数组
+        average：计算方法，可以是'binary'、'micro'或'macro'。默认为'binary'
+
+        返回值：
+        F1-score值
+        """
+        from sklearn.metrics import f1_score as sk_f1_score
+
+        if average == 'binary':
+            return sk_f1_score(y_true, y_pred, average='binary')
+        elif average == 'micro':
+            return sk_f1_score(y_true, y_pred, average='micro')
+        elif average == 'macro':
+            return sk_f1_score(y_true, y_pred, average='macro', labels=np.unique(y_true))
+        else:
+            raise ValueError("average参数只能是'binary'、'micro'或'macro'中的一个")
+
+
+    n = 0
+    p = 0
+    n1 = 0
+    p1 = 0
+    y_true = []
+    y_pred = []
+    y_pred1 = []
+    with    open("zdf.prediction.txt") as f:
+        for i in f:
+            split = i.split("\t")
+            try:
+                label = int(split[0])
+                pred = round(float(split[1]))
+                y_true.append(label)
+                y_pred.append(pred)
+                y_pred1.append(float(split[1]))
+                if label == 1:
+                    p += 1
+                    if label == pred:
+                        p1 += 1
+                else:
+                    n += 1
+                    if label == pred:
+                        n1 += 1
+            except:
+                pass
+    print(p, n)
+    print(1.0 * p1 / p, 1.0 * n1 / n)
+    f1 = f1_score(y_true, y_pred, average='binary')
+    print("F1-score为：", f1)
 
 

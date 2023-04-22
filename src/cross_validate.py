@@ -62,9 +62,9 @@ def predict(model: nn.Module, data_loader: DataLoader, device=torch.device('cuda
 
 
 def train_transformer_model(
-        model_class, model_params, 
-        optimizer_class, optimizer_params, 
-        dataset, groups, n_folds, 
+        model_class, model_params,
+        optimizer_class, optimizer_params,
+        dataset, groups, n_folds,
         num_epoch, patience, batch_size, num_workers,
         outdir, checkpoint_prefix, device, use_scheduler=False) -> nn.Module:
     bce_loss = nn.BCELoss()
@@ -211,22 +211,22 @@ if __name__ == "__main__":
 
     if not os.path.isdir(args.outdir):
         args.outdir = make_directory(args.outdir)
-
     train_transformer_model(
-            model_class=model_class, 
+            model_class=model_class,
             model_params=config["model_opts"],
-            optimizer_class=torch.optim.Adam, 
+            optimizer_class=torch.optim.Adam,
             optimizer_params=optimizer_params,
             dataset=all_data,
             groups=all_data.metainfo["chrom"],
             n_folds=5,
-            num_epoch=config["train_opts"]["num_epoch"], 
-            patience=config["train_opts"]["patience"], 
-            batch_size=config["train_opts"]["batch_size"], 
+            num_epoch=config["train_opts"]["num_epoch"],
+            patience=config["train_opts"]["patience"],
+            batch_size=config["train_opts"]["batch_size"],
             num_workers=config["train_opts"]["num_workers"],
-            outdir=args.outdir, 
+            outdir=args.outdir,
             checkpoint_prefix="checkpoint",
             device=device,
             use_scheduler=config["train_opts"]["use_scheduler"]
         )
+
 

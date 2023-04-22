@@ -79,9 +79,9 @@ def predict(model: nn.Module, data_loader: DataLoader, device=torch.device('cuda
 
 
 def train_validate_test(
-        model, optimizer, 
-        train_loader, valid_loader, test_loader, 
-        num_epoch, patience, outdir, 
+        model, optimizer,
+        train_loader, valid_loader, test_loader,
+        num_epoch, patience, outdir,
         checkpoint_prefix, device, use_scheduler=False) -> nn.Module:
     bce_loss = nn.BCELoss()
     mse_loss = nn.MSELoss()
@@ -94,6 +94,12 @@ def train_validate_test(
 
     for epoch_idx in range(num_epoch):
         model.train()
+        # 这段代码是一个训练过程的循环，用于训练一个深度学习模型。其中，如果这个模型有一个名为"att_C"的属性，就会进行以下的操作：
+        # 1、使用模型对输入数据 feats、enh_idxs、prom_idxs进行前向传播，得到模型的输出 pred、预测的距离   pred_dists  和注意力矩阵   att
+        # 2、将注意力矩阵转置并计算其与单位矩阵之差的二范数，即正则化项 penal。
+        # 3、计算损失函数 loss，包括二分类交叉熵损失 bce_loss、正则化项 penal 以及平方误差损失 mse_loss(dists, pred_dists)，其中 model.att_C 表示正则化项的系数。
+        # 4、删除正则化项 penal 和单位矩阵 identity。
+        # 5、如果模型没有 "att_C" 属性，则只进行前向传播并计算二分类交叉熵损失 bce_loss。
         for feats, dists, enh_idxs, prom_idxs, labels in tqdm.tqdm(train_loader):
             feats, dists, labels = feats.to(device), dists.to(device), labels.to(device)
             if hasattr(model, "att_C"):
@@ -123,7 +129,7 @@ def train_validate_test(
             best_epoch, best_val_auc, best_val_aupr = epoch_idx, val_AUC, val_AUPR
             test_pred, test_true = predict(model, test_loader)
             np.savetxt(
-                    "{}/test_result.{}.txt.gz".format(outdir, epoch_idx), 
+                    "{}/test_result.{}.txt.gz".format(outdir, epoch_idx),
                     X=np.concatenate((test_pred.reshape(-1, 1), test_true.reshape(-1, 1)), axis=1),
                     fmt="%.5f",
                     delimiter='\t'
@@ -154,18 +160,18 @@ def train_validate_test(
 def get_args():
     p = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     p.add_argument(
-            '--train', 
-            required=True, 
+            '--train',
+            required=True,
             nargs='+'
             )
     p.add_argument(
-            '--valid', 
-            required=True, 
+            '--valid',
+            required=True,
             nargs='+'
         )
     p.add_argument(
-            "--test", 
-            nargs='+', 
+            "--test",
+            nargs='+',
             default=None,
             help="Optional test set"
         )
@@ -174,6 +180,8 @@ def get_args():
     p.add_argument('-o', "--outdir", required=True)
     p.add_argument("--threads", default=32, type=int)
     p.add_argument('--seed', type=int, default=2020)
+    p.add_argument('--use_reverse', type=bool, default=False)
+    p.add_argument('--gpu', default=-1, type=int, help="GPU ID, (-1 for CPU)")
     return p
 
 
@@ -189,7 +197,7 @@ if __name__ == "__main__":
     train_config = config.copy()
     train_config["data_opts"]["datasets"] = args.train
     train_config["data_opts"]["use_reverse"] = args.use_reverse
-    train_config["data_opts"]["max_aug"] = args.aug_num
+    # train_config["data_opts"]["max_aug"] = args.aug_num
     train_data = epi_dataset.EPIDataset(
         **train_config["data_opts"]
     )
@@ -202,7 +210,7 @@ if __name__ == "__main__":
             **valid_test_config["data_opts"]
         )
         valid_idx, test_idx = split_train_valid_test(
-                np.array(valid_test_data.metainfo["chrom"]), 
+                np.array(valid_test_data.metainfo["chrom"]),
                 train_keys=["chr{}".format(i).replace("23", "X") for i in range(1, 24, 2)],
                 valid_keys=["chr{}".format(i) for i in range(2, 22, 2)]
             )
@@ -238,7 +246,7 @@ if __name__ == "__main__":
     if args.gpu == -1:
         device = "cpu"
     else:
-        os.environ["CUDA_VISIBLE_DEVICES"] = str(args.gpu_id)
+        os.environ["CUDA_VISIBLE_DEVICES"] = str(args.gpu)
         device = "cuda"
     device = torch.device(device)
 
@@ -256,14 +264,16 @@ if __name__ == "__main__":
         args.outdir = make_directory(args.outdir)
 
     train_validate_test(
-            model, 
-            optimizer, 
+            model,
+            optimizer,
             train_loader, valid_loader, test_loader,
-            num_epoch=config["train_opts"]["num_epoch"], 
-            patience=config["train_opts"]["patience"], 
-            outdir=args.outdir, 
+            num_epoch=config["train_opts"]["num_epoch"],
+            patience=config["train_opts"]["patience"],
+            outdir=args.outdir,
             checkpoint_prefix="checkpoint",
             device=device,
             use_scheduler=config["train_opts"]["use_scheduler"]
         )
 
+
+# --c TransEPI_EPI_zdf_train_val.json --train "../data/BENGI/GM12878.CTCF-ChIAPET-Benchmark.v3.tsv.gz" "../data/BENGI/GM12878.HiC-Benchmark.v3.tsv.gz" --valid "../data/BENGI/GM12878.RNAPII-ChIAPET-Benchmark.v3.tsv.gz" -o zdf_train_val
