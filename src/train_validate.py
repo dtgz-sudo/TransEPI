@@ -312,6 +312,4 @@ if __name__ == "__main__":
         use_scheduler=config["train_opts"]["use_scheduler"]
     )
 
-# python train_validate.py --gpu 0 --c TransEPI_EPI_zdf_train_val.json --train ../data/BENGI/GM12878.CTCF-ChIAPET-Benchmark.v3.tsv.gz ../data/BENGI/GM12878.HiC-Benchmark.v3.tsv.gz --valid ../data/BENGI/GM12878.RNAPII-ChIAPET-Benchmark.v3.tsv.gz -o zdf_train_val
-
-# nohup python - u train_validate.py --gpu 0 --c TransEPI_EPI_zdf_train_val.json --train ../data/BENGI/GM12878.CTCF-ChIAPET-Benchmark.v3.tsv.gz ../data/BENGI/GM12878.HiC-Benchmark.v3.tsv.gz --valid ../data/BENGI/GM12878.RNAPII-ChIAPET-Benchmark.v3.tsv.gz -o zdf_train_val  > out.log 2>&1 &
+# nohup python - u train_validate.py --gpu 0 --c TransEPI_EPI_zdf_train_val.json --train ../data/BENGI/GM12878.CTCF-ChIAPET-Benchmark.v3.tsv.gz --valid  ../data/BENGI/GM12878.HiC-Benchmark.v3.tsv.gz -o zdf_train_val  > train_val_samplesData.log 2>&1 &

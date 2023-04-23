@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import argparse, os, sys, time
+import random
 import warnings, json, gzip
 from collections import OrderedDict
 
@@ -101,6 +102,48 @@ class EPIDataset(Dataset):
             self.feat_dim += 1
         if self.sin_encoding:
             self.feat_dim += 1
+        #进行数据的正负例均衡采样
+        # self.samples.append((
+        #     start_bin + shift, stop_bin + shift,
+        #     left_pad_bin, right_pad_bin,
+        #     enh_bin, prom_bin,
+        #     cell, chrom, np.log2(1 + 500000 / float(dist)),
+        #     int(label), knock_range
+        # ))
+        # # print(l.strip())
+        # # print(self.samples[-1])
+        # # print(enh_coord, enh_coord // self.bin_size, tss_coord, tss_coord // self.bin_size, seq_begin, seq_begin // self.bin_size, seq_end, seq_end // self.bin_size, start_bin, stop_bin, left_pad_bin, right_pad_bin)
+        #
+        # self.metainfo['label'].append(int(label))
+        # self.metainfo['dist'].append(float(dist))
+        # self.metainfo['chrom'].append(chrom)
+        # self.metainfo['cell'].append(cell)
+        # self.metainfo['enh_name'].append(enh_name)
+        # self.metainfo['prom_name'].append(prom_name)
+        # self.metainfo['shift'].append(shift)
+        metainfo = self.metainfo
+        samples = self.samples
+        # 统计正例和负例的数量
+        num_pos = sum(metainfo['label'])
+        num_neg = len(metainfo['label']) - num_pos
+
+        # 如果正例数量大于等于负例数量，不进行采样
+        if num_pos <= num_neg:
+            # 对负例进行采样，保留全部的正例
+            neg_indices = [i for i in range(len(samples)) if samples[i][-2] == 0]
+            pos_indices = [i for i in range(len(samples)) if samples[i][-2] == 1]
+            sampled_neg_indices = random.sample(neg_indices, num_pos)
+            balanced_indices = pos_indices + sampled_neg_indices
+            balanced_samples = [samples[i] for i in balanced_indices]
+
+            # 更新metainfo
+            metainfo['label'] = [metainfo['label'][i] for i in balanced_indices]
+            metainfo['dist'] = [metainfo['dist'][i] for i in balanced_indices]
+            metainfo['chrom'] = [metainfo['chrom'][i] for i in balanced_indices]
+            metainfo['cell'] = [metainfo['cell'][i] for i in balanced_indices]
+            metainfo['enh_name'] = [metainfo['enh_name'][i] for i in balanced_indices]
+            metainfo['prom_name'] = [metainfo['prom_name'][i] for i in balanced_indices]
+            metainfo['shift'] = [metainfo['shift'][i] for i in balanced_indices]
 
     def load_datasets(self):
         for fn in self.datasets:
