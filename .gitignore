@@ -133,3 +133,4 @@ zdf*
 temp*
 data/genomic_data/*.pt
 temp.pt
+__pycache__/*

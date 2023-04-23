@@ -9,6 +9,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.autograd import Variable
 from torch.utils.data import DataLoader, Subset
+import argparse, os, sys, time, shutil, tqdm
 
 import epi_models
 import epi_dataset
@@ -38,7 +39,7 @@ def model_summary(model):
 def predict(model: nn.Module, data_loader: DataLoader, device=torch.device('cuda')):
     model.eval()
     result, true_label = list(), list()
-    for feats, _, enh_idxs, prom_idxs, labels in data_loader:
+    for feats, _, enh_idxs, prom_idxs, labels in tqdm.tqdm( data_loader):
         feats, labels = feats.to(device), labels.to(device)
         # enh_idxs, prom_idxs = feats.to(device), prom_idxs.to(device)
         pred = model(feats, enh_idx=enh_idxs, prom_idx=prom_idxs)
@@ -72,7 +73,7 @@ if __name__ == "__main__":
     #np.random.seed(args.seed)
 
     if not torch.cuda.is_available():
-        warnings.warn("GPU is not available")
+        # warnings.warn("GPU is not available")
         args.gpu = -1
 
     config = json.load(open(args.config))
@@ -81,7 +82,7 @@ if __name__ == "__main__":
     config["model_opts"]["rand_shift"] = False
 
     all_data = epi_dataset.EPIDataset(**config["data_opts"])
-
+    print("加载数据")
     config["model_opts"]["in_dim"] = all_data.feat_dim
     config["model_opts"]["seq_len"] = config["data_opts"]["seq_len"] // config["data_opts"]["bin_size"]
 
@@ -114,12 +115,13 @@ if __name__ == "__main__":
     else:
         device = torch.device('cpu')
 
-
+    print("获取模型")
     model_class = getattr(epi_models, config["model_opts"]["model"])
     model = model_class(**config["model_opts"]).to(device)
+    print("加载模型")
     model.load_state_dict(torch.load(args.model, map_location=device)["model_state_dict"])
     model.eval()
-
+    print("开始执行")
     pred, true = predict(model, test_loader, device)
 
     np.savetxt(
@@ -221,5 +223,4 @@ if __name__ == "__main__":
     print(1.0 * p1 / p, 1.0 * n1 / n)
     f1 = f1_score(y_true, y_pred, average='binary')
     print("F1-score为：", f1)
-
-
+#

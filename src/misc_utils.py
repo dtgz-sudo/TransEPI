@@ -73,6 +73,7 @@ def evaluator(y_true, y_prob, out_keys: list=None, **kwargs):
         for k in out_keys:
             results_.append(results[k])
         results = results_
+    print(results)
     return results
 
 

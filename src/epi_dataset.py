@@ -58,9 +58,9 @@ class EPIDataset(Dataset):
         assert self.seq_len % self.bin_size == 0, "{} / {}".format(self.seq_len, self.bin_size)
         self.num_bins = seq_len // bin_size
 
-        self.feats_order = list(feats_order)
-        self.num_feats = len(feats_order)
-        self.feats_config = json.load(open(feats_config))
+        self.feats_order = list(feats_order)  # 所有的特征
+        self.num_feats = len(feats_order)  # 所有的特征数量
+        self.feats_config = json.load(open(feats_config))  # 加载配置文件
         if "_location" in self.feats_config:  # 是否指定了路径否则就是当前路径
             location = self.feats_config["_location"]
             del self.feats_config["_location"]
@@ -71,7 +71,7 @@ class EPIDataset(Dataset):
             location = os.path.dirname(os.path.abspath(feats_config))  # json数据组装起来
             for cell, assays in self.feats_config.items():
                 for a, fn in assays.items():
-                    self.feats_config[cell][a] = os.path.join(location, fn)  # 全部的数据组装起来
+                    self.feats_config[cell][a] = os.path.join(location, fn)  # 全部的数据组装起来 (输入的特征转换由绝对路径改为绝对路径)
 
         self.feats = dict()  # cell_name -> feature_name -> chrom > features (array)
         self.chrom_bins = {
@@ -131,10 +131,10 @@ class EPIDataset(Dataset):
                     seq_end = (enh_coord + tss_coord) // 2 + self.seq_len // 2  # 选取的序列区间的结束位置
 
                     # enh_bin = (enh_coord - seq_begin) // self.bin_size
-                    enh_bin = enh_coord // self.bin_size#增强子bin的个数
+                    enh_bin = enh_coord // self.bin_size  # 增强子bin的个数
                     # prom_bin = (tss_coord - seq_begin) // self.bin_size
-                    prom_bin = tss_coord // self.bin_size#启动子bin的个数
-                    start_bin, stop_bin = seq_begin // self.bin_size, seq_end // self.bin_size#开始bin的ID 结束bin的ID
+                    prom_bin = tss_coord // self.bin_size  # 启动子bin的个数
+                    start_bin, stop_bin = seq_begin // self.bin_size, seq_end // self.bin_size  # 开始bin的ID 结束bin的ID
 
                     left_pad_bin, right_pad_bin = 0, 0
                     if start_bin < 0:
@@ -145,7 +145,7 @@ class EPIDataset(Dataset):
                         stop_bin = self.chrom_bins[chrom]
 
                     shift = 0
-                    if self.rand_shift:#如果 self.rand_shift 为 True，则在序列区间和增强子/启动子的位置差距较大时进行随机平移。
+                    if self.rand_shift:  # 如果 self.rand_shift 为 True，则在序列区间和增强子/启动子的位置差距较大时进行随机平移。
                         if left_pad_bin > 0:
                             shift = left_pad_bin
                             start_bin = -left_pad_bin
@@ -180,13 +180,13 @@ class EPIDataset(Dataset):
                     self.metainfo['prom_name'].append(prom_name)
                     self.metainfo['shift'].append(shift)
 
-                    if cell not in self.feats:
+                    if cell not in self.feats:  # 读取对应的特征
                         self.feats[cell] = dict()
                         for feat in self.feats_order:
                             try:
-                              self.feats[cell][feat] = torch.load(self.feats_config[cell][feat])
+                                self.feats[cell][feat] = torch.load(self.feats_config[cell][feat])
                             except:
-                                print("文件不存在:",self.feats_config[cell][feat])
+                                print("文件不存在:", self.feats_config[cell][feat])
         for k in self.metainfo:
             self.metainfo[k] = np.array(self.metainfo[k])
 
@@ -194,8 +194,17 @@ class EPIDataset(Dataset):
         return len(self.samples)
 
     def __getitem__(self, idx):
+        # 这段代码实现了一个 PyTorch 数据集的 __getitem__ 方法，用于返回数据集中指定索引位置的数据。该数据集包含了启动子-增强子对的信息以及相关的特征向量，用于训练一个二分
+        #类器来预测这些启动子-增强子对是否在染色体三维结构中相互作用。具体来说，该方法的实现过程如下：
+        #1、从数据集中获取指定索引位置的信息，该信息包含了该条启动子-增强子对的起始和结束 bin 位置，以及该条对应的基因在三维染色体结构中的相对距离、标签等信息。
+        #2、根据 bin 位置和填充信息，将数据集中保存的特征向量提取出来。这些特征向量包含了多种基因表达和染色体结构的相关特征。
+        #3、对于可能的缺失值进行填充，如有 knock_range 信息则将其置为 0，否则将其置为 1。
+        #4、根据设置的窗口大小和标记信息，将提取的特征向量进行处理，得到最终的输入特征向量。
+        #5、将该条数据的特征向量、距离、增强子和启动子位置、标签等信息打包成一个元组返回
+        # 该 __getitem__ 方法通常用于 PyTorch 的 DataLoader 中，用于迭代访问数据集并获取相应的数据。
+        # minibach 采样的方法
         start_bin, stop_bin, left_pad, right_pad, enh_bin, prom_bin, cell, chrom, dist, label, knock_range = \
-        self.samples[idx]
+            self.samples[idx]  # 该条启动子_增强子信息 起始 bin、终止 bin、左右填充长度、增强子 bin、启动子 bin、细胞类型、染色体、距离、标签和敲除范围
         enh_idx = enh_bin - start_bin + left_pad
         prom_idx = prom_bin - start_bin + left_pad
 
@@ -203,7 +212,8 @@ class EPIDataset(Dataset):
         ar = torch.zeros((0, stop_bin - start_bin))
         # print(start_bin - left_pad, stop_bin + right_pad, enh_bin, prom_bin, enh_idx, prom_idx)
         for feat in self.feats_order:
-            ar = torch.cat((ar, self.feats[cell][feat][chrom][start_bin:stop_bin].view(1, -1)), dim=0)
+            ar = torch.cat((ar, self.feats[cell][feat][chrom][start_bin:stop_bin].view(1, -1)),
+                           dim=0)  # 根据染色体bin的距离计算出特征
         ar = torch.cat((
             torch.zeros((self.num_feats, left_pad)),
             ar,

@@ -17,7 +17,9 @@ import epi_dataset
 import misc_utils
 
 import functools
+
 print = functools.partial(print, flush=True)
+
 
 def split_train_valid_test(groups, train_keys, valid_keys, test_keys=None):
     """
@@ -36,6 +38,7 @@ def split_train_valid_test(groups, train_keys, valid_keys, test_keys=None):
     else:
         return train_idx, valid_idx
 
+
 def make_directory(in_dir):
     if os.path.isfile(in_dir):
         warnings.warn("{} is a regular file".format(in_dir))
@@ -44,6 +47,7 @@ def make_directory(in_dir):
     if not os.path.isdir(outdir):
         os.makedirs(outdir)
     return outdir
+
 
 def model_summary(model):
     """
@@ -88,7 +92,7 @@ def train_validate_test(
 
     wait = 0
     best_epoch, best_val_auc, best_val_aupr = -1, -1, -1
-
+    best_acc = 0
     if use_scheduler:
         scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=5, T_mult=2)
 
@@ -108,8 +112,10 @@ def train_validate_test(
                 identity = torch.eye(att.size(1)).to(device)
                 identity = Variable(identity.unsqueeze(0).expand(labels.size(0), att.size(1), att.size(1)))
                 penal = model.l2_matrix_norm(torch.matmul(att, attT) - identity)
-                loss = bce_loss(pred, labels) + (model.att_C * penal / labels.size(0)).type(torch.cuda.FloatTensor) +  mse_loss(dists, pred_dists)
-                del penal, identity
+                loss = bce_loss(pred, labels) + (model.att_C * penal / labels.size(0)).type(
+                    torch.cuda.FloatTensor) + mse_loss(dists, pred_dists)
+                # 在上面的代码中，penal代表正则化项，被加入到损失函数中，以限制模型过拟合数据。在这个模型中，使用了注意力矩阵作为正则化项，
+                # 它被定义为注意力矩阵和它的转置矩阵之间的$L_2$范数与单位矩阵之间的$L_2$范数的差。这个正则化项的意义在于，希望注意力矩阵在将不同的输入映射到输出时能够保留足够的信息，同时又不过度依赖某些特定的输入。
             else:
                 pred = model(feats, dists)
                 loss = bce_loss(pred, labels)
@@ -122,31 +128,62 @@ def train_validate_test(
 
         model.eval()
         valid_pred, valid_true = predict(model, valid_loader)
-        val_AUC, val_AUPR = misc_utils.evaluator(valid_true, valid_pred, out_keys=["AUC", "AUPR"])
-        print("\nvalid_result({})\t{:.4f}\t{:.4f}\t({})".format(epoch_idx, val_AUC, val_AUPR, time.asctime()))
-        if val_AUC + val_AUPR > best_val_auc + best_val_aupr:
+        val_AUC, val_AUPR, F1 = misc_utils.evaluator(valid_true, valid_pred, out_keys=["AUC", "AUPR", "F1"])
+        print(
+            "\nvalid_result({})\t{:.4f}\t{:.4f}t{:.4f}\t({})".format(epoch_idx, val_AUC, val_AUPR, F1, time.asctime()))
+        length = len(pred)
+        n = 0
+        n1 = 0
+        p = 0
+        p1 = 0
+        for i in range(length):
+            i_ = labels[i]
+            pred_i_ = pred[i]
+            if i_ == 1:
+                p += 1
+                if pred_i_ > 0.5:
+                    p1 += 1
+            else:
+                n+= 1
+                if pred_i_ <= 0.5:
+                    n1 += 1
+        accuracy = n1 * 1.0 / n
+        accuracy1 = p1 * 1.0 / p
+        print("验证集合正例准确率:", accuracy)
+        print("验证集合负例准确率:", accuracy1)
+
+        # if val_AUC + val_AUPR > best_val_auc + best_val_aupr:
+        if accuracy > best_acc:
+            best_acc = accuracy
             wait = 0
             best_epoch, best_val_auc, best_val_aupr = epoch_idx, val_AUC, val_AUPR
             test_pred, test_true = predict(model, test_loader)
+            # # 测试集合准确率
+            # pred___ = (test_pred > 0.5)
+            # print(pred___[0:10])
+            # pred_test_labels = (test_pred > 0.5).long()
+            # correct_test = (pred_test_labels == labels).sum().item()
+            # accuracy_test = correct_test / test_true.size(0)
+            # print("测试集合准确率:",accuracy_test)
             np.savetxt(
-                    "{}/test_result.{}.txt.gz".format(outdir, epoch_idx),
-                    X=np.concatenate((test_pred.reshape(-1, 1), test_true.reshape(-1, 1)), axis=1),
-                    fmt="%.5f",
-                    delimiter='\t'
-                )
-            test_AUC, test_AUPR = misc_utils.evaluator(test_true, test_pred, out_keys=["AUC", "AUPR"])
-            print("Test_result\t{:.4f}\t{:.4f}\t({})".format(test_AUC, test_AUPR, time.asctime()))
+                "{}/test_result.{}.txt.gz".format(outdir, epoch_idx),
+                X=np.concatenate((test_pred.reshape(-1, 1), test_true.reshape(-1, 1)), axis=1),
+                fmt="%.5f",
+                delimiter='\t'
+            )
+            test_AUC, test_AUPR, F1 = misc_utils.evaluator(test_true, test_pred, out_keys=["AUC", "AUPR", "F1"])
+            print("Test_result\t{:.4f}\t{:.4f}\t{:.4f}\t({})".format(test_AUC, test_AUPR, F1, time.asctime()))
             if use_scheduler:
                 torch.save({
                     "model_state_dict": model.state_dict(),
                     "optimizer_state_dict": optimizer.state_dict(),
                     "scheduler_state_dict": scheduler.state_dict()
-                    }, "{}/checkpoint.{}.pt".format(outdir, epoch_idx))
+                }, "{}/checkpoint.{}.pt".format(outdir, epoch_idx))
             else:
                 torch.save({
                     "model_state_dict": model.state_dict(),
                     "optimizer_state_dict": optimizer.state_dict()
-                    }, "{}/checkpoint.{}.pt".format(outdir, epoch_idx))
+                }, "{}/checkpoint.{}.pt".format(outdir, epoch_idx))
         else:
             wait += 1
             if wait >= patience:
@@ -160,21 +197,21 @@ def train_validate_test(
 def get_args():
     p = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     p.add_argument(
-            '--train',
-            required=True,
-            nargs='+'
-            )
+        '--train',
+        required=True,
+        nargs='+'
+    )
     p.add_argument(
-            '--valid',
-            required=True,
-            nargs='+'
-        )
+        '--valid',
+        required=True,
+        nargs='+'
+    )
     p.add_argument(
-            "--test",
-            nargs='+',
-            default=None,
-            help="Optional test set"
-        )
+        "--test",
+        nargs='+',
+        default=None,
+        help="Optional test set"
+    )
     p.add_argument('-b', "--batch-size", type=int, default=256)
     p.add_argument('-c', "--config", required=True)
     p.add_argument('-o', "--outdir", required=True)
@@ -210,10 +247,10 @@ if __name__ == "__main__":
             **valid_test_config["data_opts"]
         )
         valid_idx, test_idx = split_train_valid_test(
-                np.array(valid_test_data.metainfo["chrom"]),
-                train_keys=["chr{}".format(i).replace("23", "X") for i in range(1, 24, 2)],
-                valid_keys=["chr{}".format(i) for i in range(2, 22, 2)]
-            )
+            np.array(valid_test_data.metainfo["chrom"]),
+            train_keys=["chr{}".format(i).replace("23", "X") for i in range(1, 24, 2)],
+            valid_keys=["chr{}".format(i) for i in range(2, 22, 2)]
+        )
         valid_data = Subset(valid_test_data, indices=valid_idx)
         test_data = Subset(valid_test_data, indices=test_idx)
         valid_loader = DataLoader(valid_data, batch_size=args.batch_size, shuffle=False)
@@ -264,16 +301,17 @@ if __name__ == "__main__":
         args.outdir = make_directory(args.outdir)
 
     train_validate_test(
-            model,
-            optimizer,
-            train_loader, valid_loader, test_loader,
-            num_epoch=config["train_opts"]["num_epoch"],
-            patience=config["train_opts"]["patience"],
-            outdir=args.outdir,
-            checkpoint_prefix="checkpoint",
-            device=device,
-            use_scheduler=config["train_opts"]["use_scheduler"]
-        )
+        model,
+        optimizer,
+        train_loader, valid_loader, test_loader,
+        num_epoch=config["train_opts"]["num_epoch"],
+        patience=config["train_opts"]["patience"],
+        outdir=args.outdir,
+        checkpoint_prefix="checkpoint",
+        device=device,
+        use_scheduler=config["train_opts"]["use_scheduler"]
+    )
 
+# python train_validate.py --gpu 0 --c TransEPI_EPI_zdf_train_val.json --train ../data/BENGI/GM12878.CTCF-ChIAPET-Benchmark.v3.tsv.gz ../data/BENGI/GM12878.HiC-Benchmark.v3.tsv.gz --valid ../data/BENGI/GM12878.RNAPII-ChIAPET-Benchmark.v3.tsv.gz -o zdf_train_val
 
-# --c TransEPI_EPI_zdf_train_val.json --train "../data/BENGI/GM12878.CTCF-ChIAPET-Benchmark.v3.tsv.gz" "../data/BENGI/GM12878.HiC-Benchmark.v3.tsv.gz" --valid "../data/BENGI/GM12878.RNAPII-ChIAPET-Benchmark.v3.tsv.gz" -o zdf_train_val
+# nohup python - u train_validate.py --gpu 0 --c TransEPI_EPI_zdf_train_val.json --train ../data/BENGI/GM12878.CTCF-ChIAPET-Benchmark.v3.tsv.gz ../data/BENGI/GM12878.HiC-Benchmark.v3.tsv.gz --valid ../data/BENGI/GM12878.RNAPII-ChIAPET-Benchmark.v3.tsv.gz -o zdf_train_val  > out.log 2>&1 &
