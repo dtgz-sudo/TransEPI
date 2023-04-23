@@ -112,8 +112,12 @@ def train_validate_test(
                 identity = torch.eye(att.size(1)).to(device)
                 identity = Variable(identity.unsqueeze(0).expand(labels.size(0), att.size(1), att.size(1)))
                 penal = model.l2_matrix_norm(torch.matmul(att, attT) - identity)
-                loss = bce_loss(pred, labels) + (model.att_C * penal / labels.size(0)).type(
-                    torch.cuda.FloatTensor) + mse_loss(dists, pred_dists)
+                if model.is_cuda:
+                    loss = bce_loss(pred, labels) + (model.att_C * penal / labels.size(0)).type(
+                        torch.cuda.FloatTensor) + mse_loss(dists, pred_dists)
+                else:
+                    loss = bce_loss(pred, labels) + (model.att_C * penal / labels.size(0)).type(
+                        torch.FloatTensor) + mse_loss(dists, pred_dists)
                 # 在上面的代码中，penal代表正则化项，被加入到损失函数中，以限制模型过拟合数据。在这个模型中，使用了注意力矩阵作为正则化项，
                 # 它被定义为注意力矩阵和它的转置矩阵之间的$L_2$范数与单位矩阵之间的$L_2$范数的差。这个正则化项的意义在于，希望注意力矩阵在将不同的输入映射到输出时能够保留足够的信息，同时又不过度依赖某些特定的输入。
             else:
@@ -149,8 +153,8 @@ def train_validate_test(
                     n1 += 1
         accuracy = n1 * 1.0 / n
         accuracy1 = p1 * 1.0 / p
-        print("验证集合正例准确率:", accuracy)
-        print("验证集合负例准确率:", accuracy1)
+        print("验证集合正例准确率:", accuracy1)
+        print("验证集合负例准确率:", accuracy)
 
         # if val_AUC + val_AUPR > best_val_auc + best_val_aupr:
         if accuracy > best_acc:
@@ -312,4 +316,4 @@ if __name__ == "__main__":
         use_scheduler=config["train_opts"]["use_scheduler"]
     )
 
-# nohup python - u train_validate.py --gpu 0 --c TransEPI_EPI_zdf_train_val.json --train ../data/BENGI/GM12878.CTCF-ChIAPET-Benchmark.v3.tsv.gz --valid  ../data/BENGI/GM12878.HiC-Benchmark.v3.tsv.gz -o zdf_train_val  > train_val_samplesData.log 2>&1 &
+# nohup python -u train_validate.py --gpu 0 --c TransEPI_EPI_zdf_train_val.json --train ../data/BENGI/GM12878.CTCF-ChIAPET-Benchmark.v3.tsv.gz --valid  ../data/BENGI/GM12878.HiC-Benchmark.v3.tsv.gz -o zdf_train_val  > train_val_samplesData.log 2>&1 &
