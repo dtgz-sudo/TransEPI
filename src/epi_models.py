@@ -227,9 +227,7 @@ class TransEPI(nn.Module):
             return seq_embed
 
     def l2_matrix_norm(self, m):
-        if self.is_cuda:
-            return torch.sum(torch.sum(torch.sum(m**2, 1), 1)**0.5).type(torch.cuda.DoubleTensor)
-        return torch.sum(torch.sum(torch.sum(m**2, 1), 1)**0.5).type(torch.DoubleTensor)
+        return torch.sum(torch.sum(torch.sum(m**2, 1), 1)**0.5).type(torch.cuda.DoubleTensor)
 
 
 

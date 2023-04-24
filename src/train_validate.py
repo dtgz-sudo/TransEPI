@@ -67,7 +67,7 @@ def model_summary(model):
 def predict(model: nn.Module, data_loader: DataLoader, device=torch.device('cuda')):
     model.eval()
     result, true_label = None, None
-    for feats, _, enh_idxs, prom_idxs, labels in data_loader:
+    for feats, _, enh_idxs, prom_idxs, labels in tqdm.tqdm( data_loader):
         feats, labels = feats.to(device), labels.to(device)
         # enh_idxs, prom_idxs = enh_idxs.to(device), prom_idxs.to(device)
         pred = model(feats, enh_idx=enh_idxs, prom_idx=prom_idxs)
@@ -104,6 +104,8 @@ def train_validate_test(
         # 3、计算损失函数 loss，包括二分类交叉熵损失 bce_loss、正则化项 penal 以及平方误差损失 mse_loss(dists, pred_dists)，其中 model.att_C 表示正则化项的系数。
         # 4、删除正则化项 penal 和单位矩阵 identity。
         # 5、如果模型没有 "att_C" 属性，则只进行前向传播并计算二分类交叉熵损失 bce_loss。
+        count = 0
+        loss_sum = 0
         for feats, dists, enh_idxs, prom_idxs, labels in tqdm.tqdm(train_loader):
             feats, dists, labels = feats.to(device), dists.to(device), labels.to(device)
             if hasattr(model, "att_C"):
@@ -115,6 +117,8 @@ def train_validate_test(
                 if model.is_cuda:
                     loss = bce_loss(pred, labels) + (model.att_C * penal / labels.size(0)).type(
                         torch.cuda.FloatTensor) + mse_loss(dists, pred_dists)
+                    count += 1
+                    loss_sum += loss
                 else:
                     loss = bce_loss(pred, labels) + (model.att_C * penal / labels.size(0)).type(
                         torch.FloatTensor) + mse_loss(dists, pred_dists)
@@ -123,7 +127,6 @@ def train_validate_test(
             else:
                 pred = model(feats, dists)
                 loss = bce_loss(pred, labels)
-
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
@@ -131,6 +134,7 @@ def train_validate_test(
                 scheduler.step()
 
         model.eval()
+        print(loss_sum*1.0 /count)
         valid_pred, valid_true = predict(model, valid_loader)
         val_AUC, val_AUPR, F1 = misc_utils.evaluator(valid_true, valid_pred, out_keys=["AUC", "AUPR", "F1"])
         print(
@@ -148,7 +152,7 @@ def train_validate_test(
                 if pred_i_ > 0.5:
                     p1 += 1
             else:
-                n+= 1
+                n += 1
                 if pred_i_ <= 0.5:
                     n1 += 1
         accuracy = n1 * 1.0 / n
@@ -218,8 +222,8 @@ def get_args():
     )
     p.add_argument('-b', "--batch-size", type=int, default=256)
     p.add_argument('-c', "--config", required=True)
-    p.add_argument('-o', "--outdir", required=True)
-    p.add_argument("--threads", default=32, type=int)
+    p.add_argument('-o', "--outdir", required=False, default="zdf_train_val_test")
+    p.add_argument("--threads", default=1, type=int)
     p.add_argument('--seed', type=int, default=2020)
     p.add_argument('--use_reverse', type=bool, default=False)
     p.add_argument('--gpu', default=-1, type=int, help="GPU ID, (-1 for CPU)")
@@ -316,4 +320,9 @@ if __name__ == "__main__":
         use_scheduler=config["train_opts"]["use_scheduler"]
     )
 
-# nohup python -u train_validate.py --gpu 0 --c TransEPI_EPI_zdf_train_val.json --train ../data/BENGI/GM12878.CTCF-ChIAPET-Benchmark.v3.tsv.gz --valid  ../data/BENGI/GM12878.HiC-Benchmark.v3.tsv.gz -o zdf_train_val  > train_val_samplesData.log 2>&1 &
+# nohup python -u train_validate.py --gpu 0 --c TransEPI_EPI_zdf_train_val.json --train ../data/BENGI/GM12878.CTCF-ChIAPET-Benchmark.v3.tsv.gz --valid  ../data/BENGI/GM12878.HiC-Benchmark.v3.tsv.gz -o zdf_train_val  > train_val_samplesData_gpu.log 2>&1 &
+# nohup python -u train_validate.py --gpu -1 --c TransEPI_EPI_zdf_train_val.json --train ../data/BENGI/GM12878.CTCF-ChIAPET-Benchmark.v3.tsv.gz --valid  ../data/BENGI/GM12878.HiC-Benchmark.v3.tsv.gz -o zdf_train_val  > train_val_samplesData_cpu.log 2>&1 &
+# 3455058
+
+# --gpu 0 --c TransEPI_EPI_zdf_train_val.json --train ../data/BENGI/GM12878.CTCF-ChIAPET-Benchmark.v3.tsv.gz ../data/BENGI/GM12878.HiC-Benchmark.v3.tsv.gz ../data/BENGI/GM12878.RNAPII-ChIAPET-Benchmark.v3.tsv.gz --valid ../data/BENGI/HeLa.CTCF-ChIAPET-Benchmark.v3.tsv.gz --test ../data/BENGI/HeLa.HiC-Benchmark.v3.tsv.gz -b 128
+# --gpu 0 --c TransEPI_EPI_zdf_train_val.json --train ../data/BENGI/GM12878.CTCF-ChIAPET-Benchmark.v3.tsv.gz  --valid ../data/BENGI/HeLa.CTCF-ChIAPET-Benchmark.v3.tsv.gz --test ../data/BENGI/HeLa.HiC-Benchmark.v3.tsv.gz -b 128

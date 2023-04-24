@@ -3,6 +3,7 @@
 import argparse, os, sys, time
 import warnings, json, gzip
 import numpy as np
+import pandas as pd
 
 import torch
 import torch.nn as nn
@@ -124,20 +125,20 @@ if __name__ == "__main__":
     print("开始执行")
     pred, true = predict(model, test_loader, device)
 
-    np.savetxt(
-            "{}.prediction.txt".format(args.prefix),
-            np.concatenate((
-                true.reshape(-1, 1).astype(int).astype(str),
-                pred.reshape(-1, 1).round(4).astype(str),
-                chroms.reshape(-1, 1),
-                enh_names.reshape(-1, 1),
-                prom_names.reshape(-1, 1),
-            ), axis=1),
-            delimiter='\t',
-            fmt="%s",
-            comments="",
-            header="##command: {}\n#true\tpred\tchrom\tenh_name\tprom_name".format(' '.join(sys.argv))
-        )
+    # np.savetxt(
+    #         "{}.prediction.txt".format(args.prefix),
+    #         np.concatenate((
+    #             true.reshape(-1, 1).astype(int).astype(str),
+    #             pred.reshape(-1, 1).round(4).astype(str),
+    #             chroms.reshape(-1, 1),
+    #             enh_names.reshape(-1, 1),
+    #             prom_names.reshape(-1, 1),
+    #         ), axis=1),
+    #         delimiter='\t',
+    #         fmt="%s",
+    #         comments="",
+    #         header="##command: {}\n#true\tpred\tchrom\tenh_name\tprom_name".format(' '.join(sys.argv))
+    #     )
 
     AUC, AUPR = misc_utils.evaluator(true, pred, out_keys=['AUC', 'AUPR'])
 
@@ -200,27 +201,37 @@ if __name__ == "__main__":
     y_true = []
     y_pred = []
     y_pred1 = []
-    with    open("zdf.prediction.txt") as f:
-        for i in f:
-            split = i.split("\t")
-            try:
-                label = int(split[0])
-                pred = round(float(split[1]))
-                y_true.append(label)
-                y_pred.append(pred)
-                y_pred1.append(float(split[1]))
-                if label == 1:
-                    p += 1
-                    if label == pred:
-                        p1 += 1
-                else:
-                    n += 1
-                    if label == pred:
-                        n1 += 1
-            except:
-                pass
-    print(p, n)
-    print(1.0 * p1 / p, 1.0 * n1 / n)
-    f1 = f1_score(y_true, y_pred, average='binary')
-    print("F1-score为：", f1)
+    # with    open("zdf.prediction.txt") as f:
+    length = len(true)
+    true_arr = true
+    predict_arr = pred
+    pred = None
+    result = []
+    for epoch in range(0, 11):
+        num = epoch / 10.0
+        print()
+        print()
+        print()
+        print("epoch:",num)
+        pred_arr = (predict_arr > num).astype(int)
+
+        p = np.sum(true_arr == 1)
+        n = np.sum(true_arr == 0)
+        p1 = np.sum(np.logical_and(true_arr == 1, pred_arr == 1))
+        n1 = np.sum(np.logical_and(true_arr == 0, pred_arr == 0))
+
+        y_true.extend(true_arr)
+        y_pred.extend(pred_arr)
+        y_pred1.extend(predict_arr)
+
+        accuracy = (p1 + n1) * 1.0 / (p + n)
+        precision = p1 / p
+        recall = n1 / n
+
+        f1 = f1_score(y_true, y_pred, average='binary')
+
+        result.append([num, accuracy,precision, recall, accuracy, f1])
+    #
 #
+result_df = pd.DataFrame(result, columns=['num',"accuracy", 'precision', 'recall', 'accuracy', 'f1_score'])
+print(result_df)

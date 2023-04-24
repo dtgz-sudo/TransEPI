@@ -102,7 +102,7 @@ class EPIDataset(Dataset):
             self.feat_dim += 1
         if self.sin_encoding:
             self.feat_dim += 1
-        #进行数据的正负例均衡采样
+        # 进行数据的正负例均衡采样
         # self.samples.append((
         #     start_bin + shift, stop_bin + shift,
         #     left_pad_bin, right_pad_bin,
@@ -110,41 +110,23 @@ class EPIDataset(Dataset):
         #     cell, chrom, np.log2(1 + 500000 / float(dist)),
         #     int(label), knock_range
         # ))
-        # # print(l.strip())
-        # # print(self.samples[-1])
-        # # print(enh_coord, enh_coord // self.bin_size, tss_coord, tss_coord // self.bin_size, seq_begin, seq_begin // self.bin_size, seq_end, seq_end // self.bin_size, start_bin, stop_bin, left_pad_bin, right_pad_bin)
-        #
-        # self.metainfo['label'].append(int(label))
-        # self.metainfo['dist'].append(float(dist))
-        # self.metainfo['chrom'].append(chrom)
-        # self.metainfo['cell'].append(cell)
-        # self.metainfo['enh_name'].append(enh_name)
-        # self.metainfo['prom_name'].append(prom_name)
-        # self.metainfo['shift'].append(shift)
-        metainfo = self.metainfo
-        samples = self.samples
-        # 统计正例和负例的数量
-        num_pos = sum(metainfo['label'])
-        num_neg = len(metainfo['label']) - num_pos
-
-        # 如果正例数量大于等于负例数量，不进行采样
-        if num_pos <= num_neg:
-            # 对负例进行采样，保留全部的正例
-            neg_indices = [i for i in range(len(samples)) if samples[i][-2] == 0]
-            pos_indices = [i for i in range(len(samples)) if samples[i][-2] == 1]
-            sampled_neg_indices = random.sample(neg_indices, num_pos)
-            balanced_indices = pos_indices + sampled_neg_indices
-            balanced_samples = [samples[i] for i in balanced_indices]
-
-            # 更新metainfo
-            metainfo['label'] = [metainfo['label'][i] for i in balanced_indices]
-            metainfo['dist'] = [metainfo['dist'][i] for i in balanced_indices]
-            metainfo['chrom'] = [metainfo['chrom'][i] for i in balanced_indices]
-            metainfo['cell'] = [metainfo['cell'][i] for i in balanced_indices]
-            metainfo['enh_name'] = [metainfo['enh_name'][i] for i in balanced_indices]
-            metainfo['prom_name'] = [metainfo['prom_name'][i] for i in balanced_indices]
-            metainfo['shift'] = [metainfo['shift'][i] for i in balanced_indices]
-
+        # length = len(self.samples)
+        # idx_pos = []
+        # idx_neg = []
+        # for i in range(length):
+        #     if self.samples[i][-2] == 1:
+        #         idx_pos.append(self.samples[i])
+        #     elif self.samples[i][-2] == 0:
+        #         idx_neg.append(self.samples[i])
+        #     else:
+        #         print("发生错误")
+        # if len(idx_neg) > len(idx_pos):
+        #     sample = random.sample(idx_neg, len(idx_pos))
+        #     sample = sample + idx_pos
+        #     random.shuffle(sample)
+        #     random.shuffle(sample)
+        #     random.shuffle(sample)
+        #     self.samples = sample
     def load_datasets(self):
         for fn in self.datasets:
             with custom_open(fn) as infile:
@@ -238,12 +220,12 @@ class EPIDataset(Dataset):
 
     def __getitem__(self, idx):
         # 这段代码实现了一个 PyTorch 数据集的 __getitem__ 方法，用于返回数据集中指定索引位置的数据。该数据集包含了启动子-增强子对的信息以及相关的特征向量，用于训练一个二分
-        #类器来预测这些启动子-增强子对是否在染色体三维结构中相互作用。具体来说，该方法的实现过程如下：
-        #1、从数据集中获取指定索引位置的信息，该信息包含了该条启动子-增强子对的起始和结束 bin 位置，以及该条对应的基因在三维染色体结构中的相对距离、标签等信息。
-        #2、根据 bin 位置和填充信息，将数据集中保存的特征向量提取出来。这些特征向量包含了多种基因表达和染色体结构的相关特征。
-        #3、对于可能的缺失值进行填充，如有 knock_range 信息则将其置为 0，否则将其置为 1。
-        #4、根据设置的窗口大小和标记信息，将提取的特征向量进行处理，得到最终的输入特征向量。
-        #5、将该条数据的特征向量、距离、增强子和启动子位置、标签等信息打包成一个元组返回
+        # 类器来预测这些启动子-增强子对是否在染色体三维结构中相互作用。具体来说，该方法的实现过程如下：
+        # 1、从数据集中获取指定索引位置的信息，该信息包含了该条启动子-增强子对的起始和结束 bin 位置，以及该条对应的基因在三维染色体结构中的相对距离、标签等信息。
+        # 2、根据 bin 位置和填充信息，将数据集中保存的特征向量提取出来。这些特征向量包含了多种基因表达和染色体结构的相关特征。
+        # 3、对于可能的缺失值进行填充，如有 knock_range 信息则将其置为 0，否则将其置为 1。
+        # 4、根据设置的窗口大小和标记信息，将提取的特征向量进行处理，得到最终的输入特征向量。
+        # 5、将该条数据的特征向量、距离、增强子和启动子位置、标签等信息打包成一个元组返回
         # 该 __getitem__ 方法通常用于 PyTorch 的 DataLoader 中，用于迭代访问数据集并获取相应的数据。
         # minibach 采样的方法
         start_bin, stop_bin, left_pad, right_pad, enh_bin, prom_bin, cell, chrom, dist, label, knock_range = \
