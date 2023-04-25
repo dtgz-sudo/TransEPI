@@ -61,14 +61,14 @@ class PositionalEncoding(nn.Module):
 
 
 class TransEPI(nn.Module):
-    def __init__(self, in_dim: int, 
+    def __init__(self, in_dim: int,
             cnn_channels: List[int], cnn_sizes: List[int], cnn_pool: List[int],
             enc_layers: int, num_heads: int, d_inner: int,
             da: int, r: int, att_C: float,
             fc: List[int], fc_dropout: float, seq_len: int=-1, pos_enc: bool=False,
             **kwargs):
         super(TransEPI, self).__init__()
-        
+
         major, minor = torch.__version__.split('.')[:2]
         assert int(major) >= 1 and int(minor) >= 6, "PyTorch={}, while PyTorch>=1.6 is required".format(torch.__version__)
         if int(minor) < 9:
@@ -78,14 +78,14 @@ class TransEPI(nn.Module):
 
         if pos_enc:
             assert seq_len > 0
-        
+
         self.cnn = nn.ModuleList()
         self.cnn.append(
                 nn.Sequential(
                     nn.Conv1d(
-                        in_channels=in_dim, 
-                        out_channels=cnn_channels[0], 
-                        kernel_size=cnn_sizes[0], 
+                        in_channels=in_dim,
+                        out_channels=cnn_channels[0],
+                        kernel_size=cnn_sizes[0],
                         padding=cnn_sizes[0] // 2),
                     nn.BatchNorm1d(cnn_channels[0]),
                     nn.LeakyReLU(),
@@ -97,8 +97,8 @@ class TransEPI(nn.Module):
             self.cnn.append(
                     nn.Sequential(
                         nn.Conv1d(
-                            in_channels=cnn_channels[i], 
-                            out_channels=cnn_channels[i + 1], 
+                            in_channels=cnn_channels[i],
+                            out_channels=cnn_channels[i + 1],
                             kernel_size=cnn_sizes[i + 1],
                             padding=cnn_sizes[i + 1] // 2),
                         nn.BatchNorm1d(cnn_channels[i + 1]),
@@ -112,7 +112,7 @@ class TransEPI(nn.Module):
             self.pos_enc = PositionalEncoding(d_hid=cnn_channels[-1], n_position=seq_len)
         else:
             self.pos_enc = None
-        
+
         if not self.transpose:
             enc_layer = nn.TransformerEncoderLayer(
                     d_model=cnn_channels[-1],
@@ -126,7 +126,7 @@ class TransEPI(nn.Module):
                     nhead=num_heads,
                     dim_feedforward=d_inner,
                 )
-           
+
         self.encoder = nn.TransformerEncoder(
                 enc_layer,
                 num_layers=enc_layers
@@ -163,7 +163,8 @@ class TransEPI(nn.Module):
                     nn.ReLU(),
                     nn.Linear(cnn_channels[-1], 1)
                 )
-
+        #是否使用cuda(gpu)
+        self.is_cuda = torch.cuda.is_available()
 
     def forward(self, feats, enh_idx, prom_idx, return_att=False):
         # feats: (B, D, S)
@@ -207,7 +208,7 @@ class TransEPI(nn.Module):
         prom_idx = prom_idx.long().view(batch_size) + base_idx
         feats = feats.reshape(-1, feat_dim)
         seq_embed = torch.cat((
-            feats[enh_idx, :].view(batch_size, -1), 
+            feats[enh_idx, :].view(batch_size, -1),
             feats[prom_idx, :].view(batch_size, -1),
             seq_embed.mean(dim=1).view(batch_size, -1),
             seq_embed.max(dim=1)[0].view(batch_size, -1)
@@ -225,24 +226,24 @@ class TransEPI(nn.Module):
             del att
             return seq_embed
 
-    def l2_matrix_norm(self, m):                                                                                        
+    def l2_matrix_norm(self, m):
         return torch.sum(torch.sum(torch.sum(m**2, 1), 1)**0.5).type(torch.cuda.DoubleTensor)
 
 
 
 # class TransformerModule(nn.Module):
-#     def __init__(self, in_dim: int, 
+#     def __init__(self, in_dim: int,
 #             cnn_channels: List[int], cnn_sizes: List[int], cnn_pool: List[int],
 #             enc_layers: int, num_heads: int, d_inner: int, **kwargs):
 #         super(TransformerModule, self).__init__()
-# 
+#
 #         self.cnn = nn.ModuleList()
 #         self.cnn.append(
 #                 nn.Sequential(
 #                     nn.Conv1d(
-#                         in_channels=in_dim, 
-#                         out_channels=cnn_channels[0], 
-#                         kernel_size=cnn_sizes[0], 
+#                         in_channels=in_dim,
+#                         out_channels=cnn_channels[0],
+#                         kernel_size=cnn_sizes[0],
 #                         padding=cnn_sizes[0] // 2),
 #                     nn.BatchNorm1d(cnn_channels[0]),
 #                     nn.LeakyReLU(),
@@ -253,8 +254,8 @@ class TransEPI(nn.Module):
 #             self.cnn.append(
 #                     nn.Sequential(
 #                         nn.Conv1d(
-#                             in_channels=cnn_channels[i], 
-#                             out_channels=cnn_channels[i + 1], 
+#                             in_channels=cnn_channels[i],
+#                             out_channels=cnn_channels[i + 1],
 #                             kernel_size=cnn_sizes[i + 1],
 #                             padding=cnn_sizes[i + 1] // 2),
 #                         nn.BatchNorm1d(cnn_channels[i + 1]),
@@ -262,7 +263,7 @@ class TransEPI(nn.Module):
 #                         nn.MaxPool1d(cnn_pool[i + 1])
 #                 )
 #             )
-# 
+#
 #         enc_layer = nn.TransformerEncoderLayer(
 #                 d_model=cnn_channels[-1],
 #                 nhead=num_heads,
@@ -272,7 +273,7 @@ class TransEPI(nn.Module):
 #                 enc_layer,
 #                 num_layers=enc_layers
 #                 )
-# 
+#
 #     def forward(self, feats):
 #         # feats: (B, D, S)
 #         for cnn in  self.cnn:
@@ -280,8 +281,8 @@ class TransEPI(nn.Module):
 #         feats = feats.transpose(1, 2)
 #         feats = self.encoder(feats)
 #         return feats
-# 
-# 
+#
+#
 
 
 # class EncoderLayer(nn.Module):
@@ -289,13 +290,13 @@ class TransEPI(nn.Module):
 #         super(EncoderLayer, self).__init__()
 #         self.slf_att = SelfAttention(dim=d_model, causal=True, heads=n_head)
 #         self.pos_ffn = PositionwiseFeedForward(d_model, d_inner, dropout)
-# 
+#
 #     def forward(self, enc_input):
 #         enc_input = self.slf_att(enc_input)
 #         enc_input = self.pos_ffn(enc_input)
 #         return enc_input
-# 
-# 
+#
+#
 # class Encoder(nn.Module):
 #     def __init__(self, n_layers, n_head, d_model, d_inner, dropout=0.1):
 #         super(Encoder, self).__init__()
@@ -305,7 +306,7 @@ class TransEPI(nn.Module):
 #             )
 #         self.layer_norm = nn.LayerNorm(d_model, eps=1E-6)
 #         self.d_model = d_model
-# 
+#
 #     def forward(self, seq):
 #         seq = self.dropout(seq)
 #         # seq = self.layer_norm(seq)
@@ -315,20 +316,20 @@ class TransEPI(nn.Module):
 
 
 # class PerformerModel(nn.Module):
-#     def __init__(self, in_dim: int, 
+#     def __init__(self, in_dim: int,
 #             cnn_channels: List[int], cnn_sizes: List[int], cnn_pool: List[int],
 #             enc_layers: int, num_heads: int, d_inner: int,
 #             fc: List[int], fc_dropout: float,
 #             **kwargs):
 #         super(PerformerModel, self).__init__()
-# 
+#
 #         self.cnn = nn.ModuleList()
 #         self.cnn.append(
 #                 nn.Sequential(
 #                     nn.Conv1d(
-#                         in_channels=in_dim, 
-#                         out_channels=cnn_channels[0], 
-#                         kernel_size=cnn_sizes[0], 
+#                         in_channels=in_dim,
+#                         out_channels=cnn_channels[0],
+#                         kernel_size=cnn_sizes[0],
 #                         padding=cnn_sizes[0] // 2),
 #                     nn.BatchNorm1d(cnn_channels[0]),
 #                     nn.LeakyReLU(),
@@ -339,8 +340,8 @@ class TransEPI(nn.Module):
 #             self.cnn.append(
 #                     nn.Sequential(
 #                         nn.Conv1d(
-#                             in_channels=cnn_channels[i], 
-#                             out_channels=cnn_channels[i + 1], 
+#                             in_channels=cnn_channels[i],
+#                             out_channels=cnn_channels[i + 1],
 #                             kernel_size=cnn_sizes[i + 1],
 #                             padding=cnn_sizes[i + 1] // 2),
 #                         nn.BatchNorm1d(cnn_channels[i + 1]),
@@ -348,14 +349,14 @@ class TransEPI(nn.Module):
 #                         nn.MaxPool1d(cnn_pool[i + 1])
 #                 )
 #             )
-# 
+#
 #         self.performer_encoder = Encoder(
-#                 n_layers=enc_layers, 
-#                 d_model=cnn_channels[-1], 
+#                 n_layers=enc_layers,
+#                 d_model=cnn_channels[-1],
 #                 n_head=num_heads,
 #                 d_inner=d_inner
 #             )
-# 
+#
 #         if fc[-1] != 1:
 #             fc.append(1)
 #         self.fc = nn.ModuleList()
@@ -373,8 +374,8 @@ class TransEPI(nn.Module):
 #                     )
 #                 )
 #         self.fc.append(nn.Sigmoid())
-# 
-# 
+#
+#
 #     def forward(self, feats):
 #         # feats: (B, D, S)
 #         for cnn in  self.cnn:

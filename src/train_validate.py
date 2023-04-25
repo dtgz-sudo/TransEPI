@@ -306,3 +306,10 @@ if __name__ == "__main__":
         device=device,
         use_scheduler=config["train_opts"]["use_scheduler"]
     )
+
+# nohup python -u train_validate.py --gpu 0 --c TransEPI_EPI_zdf_train_val.json --train ../data/BENGI/GM12878.CTCF-ChIAPET-Benchmark.v3.tsv.gz --valid  ../data/BENGI/GM12878.HiC-Benchmark.v3.tsv.gz -o zdf_train_val  > train_val_samplesData_gpu.log 2>&1 &
+# nohup python -u train_validate.py --gpu -1 --c TransEPI_EPI_zdf_train_val.json --train ../data/BENGI/GM12878.CTCF-ChIAPET-Benchmark.v3.tsv.gz --valid  ../data/BENGI/GM12878.HiC-Benchmark.v3.tsv.gz -o zdf_train_val  > train_val_samplesData_cpu.log 2>&1 &
+# 3455058
+
+# --gpu 0 --c TransEPI_EPI_zdf_train_val.json --train ../data/BENGI/GM12878.CTCF-ChIAPET-Benchmark.v3.tsv.gz ../data/BENGI/GM12878.HiC-Benchmark.v3.tsv.gz ../data/BENGI/GM12878.RNAPII-ChIAPET-Benchmark.v3.tsv.gz --valid ../data/BENGI/HeLa.CTCF-ChIAPET-Benchmark.v3.tsv.gz --test ../data/BENGI/HeLa.HiC-Benchmark.v3.tsv.gz -b 128
+# --gpu 0 --c TransEPI_EPI_zdf_train_val.json --train ../data/BENGI/GM12878.CTCF-ChIAPET-Benchmark.v3.tsv.gz  --valid ../data/BENGI/HeLa.CTCF-ChIAPET-Benchmark.v3.tsv.gz --test ../data/BENGI/HeLa.HiC-Benchmark.v3.tsv.gz -b 128

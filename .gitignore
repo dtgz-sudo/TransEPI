@@ -5,7 +5,9 @@ __pycache__/
 
 # C extensions
 *.so
-
+*.idea
+*.pycharm
+*.iml
 # Distribution / packaging
 .Python
 build/
@@ -127,3 +129,8 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+zdf*
+temp*
+data/genomic_data/*.pt
+temp.pt
+__pycache__/*
