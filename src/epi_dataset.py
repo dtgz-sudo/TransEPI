@@ -102,7 +102,7 @@ class EPIDataset(Dataset):
             self.feat_dim += 1
         if self.sin_encoding:
             self.feat_dim += 1
-        # 进行数据的正负例均衡采样
+        # # 进行数据的正负例均衡采样
         # self.samples.append((
         #     start_bin + shift, stop_bin + shift,
         #     left_pad_bin, right_pad_bin,
@@ -120,6 +120,8 @@ class EPIDataset(Dataset):
                 idx_neg.append(self.samples[i])
             else:
                 print("发生错误")
+                print(self.samples[i])
+                sys.exit(0)
         if len(idx_neg) > len(idx_pos):
             sample = random.sample(idx_neg, len(idx_pos))
             sample = sample + idx_pos
@@ -228,8 +230,11 @@ class EPIDataset(Dataset):
         # 5、将该条数据的特征向量、距离、增强子和启动子位置、标签等信息打包成一个元组返回
         # 该 __getitem__ 方法通常用于 PyTorch 的 DataLoader 中，用于迭代访问数据集并获取相应的数据。
         # minibach 采样的方法
-        start_bin, stop_bin, left_pad, right_pad, enh_bin, prom_bin, cell, chrom, dist, label, knock_range = \
-            self.samples[idx]  # 该条启动子_增强子信息 起始 bin、终止 bin、左右填充长度、增强子 bin、启动子 bin、细胞类型、染色体、距离、标签和敲除范围
+        try:
+            start_bin, stop_bin, left_pad, right_pad, enh_bin, prom_bin, cell, chrom, dist, label, knock_range = \
+                self.samples[idx]  # 该条启动子_增强子信息 起始 bin、终止 bin、左右填充长度、增强子 bin、启动子 bin、细胞类型、染色体、距离、标签和敲除范围
+        except:
+            print(idx)
         enh_idx = enh_bin - start_bin + left_pad
         prom_idx = prom_bin - start_bin + left_pad
 

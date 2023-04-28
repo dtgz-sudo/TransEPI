@@ -92,6 +92,25 @@ def get_args():
     return p
 
 
+from sklearn.metrics import confusion_matrix
+
+
+def calc_confusion_matrix(y_true, y_pred, threshold):
+    y_pred_binary = (y_pred > threshold).astype(int)
+    tp = ((y_true == 1) & (y_pred_binary == 1)).sum()
+    fp = ((y_true == 0) & (y_pred_binary == 1)).sum()
+    tn = ((y_true == 0) & (y_pred_binary == 0)).sum()
+    fn = ((y_true == 1) & (y_pred_binary == 0)).sum()
+    return tp, fp, tn, fn
+
+def calc_metrics(y_true, y_pred, threshold):
+    tp, fp, tn, fn = calc_confusion_matrix(y_true, y_pred, threshold)
+    accuracy = (tp + tn) / (tp + fp + tn + fn)
+    precision = tp / (tp + fp)
+    recall = tp / (tp + fn)
+    f1 = 2 * precision * recall / (precision + recall)
+    return accuracy, precision, recall, f1,tp, fp, tn, fn
+
 if __name__ == "__main__":
     p = get_args()
     args = p.parse_args()

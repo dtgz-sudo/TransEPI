@@ -5,7 +5,12 @@
             "../data/BENGI/GM12878.HiC-Benchmark.v3.tsv.gz",
             "../data/BENGI/GM12878.RNAPII-ChIAPET-Benchmark.v3.tsv.gz",
             "../data/BENGI/HeLa.CTCF-ChIAPET-Benchmark.v3.tsv.gz",
-            "../data/BENGI/HeLa.HiC-Benchmark.v3.tsv.gz"
+            "../data/BENGI/HeLa.HiC-Benchmark.v3.tsv.gz",
+            "../data/BENGI/HeLa.RNAPII-ChIAPET-Benchmark.v3.tsv.gz",
+            "../data/BENGI/HMEC.HiC-Benchmark.v3.tsv.gz",
+            "../data/BENGI/IMR90.HiC-Benchmark.v3.tsv.gz",
+            "../data/BENGI/K562.HiC-Benchmark.v3.tsv.gz",
+            "../data/BENGI/NHEK.HiC-Benchmark.v3.tsv.gz"
         ],
         "feats_order": ["CTCF", "DNase", "H3K4me1", "H3K4me3", "H3K36me3", "H3K9me3",  "H3K27me3"],
         "feats_config": "../data/genomic_data/CTCF_DNase_6histone.500.json",
@@ -31,10 +36,10 @@
 
     "train_opts": {
         "valid_chroms": [],
-        "learning_rate": 0.1,
-        "batch_size": 256,
+        "learning_rate": 0.001,
+        "batch_size": 128,
         "num_epoch": 300,
-        "patience": 5,
+        "patience": 10,
         "num_workers": 16,
         "use_scheduler": false
     }
