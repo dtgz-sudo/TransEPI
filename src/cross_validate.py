@@ -15,6 +15,7 @@ import epi_models
 import epi_dataset
 import misc_utils
 
+warnings.filterwarning('ignore')
 
 import functools
 print = functools.partial(print, flush=True)

@@ -5,6 +5,8 @@ import warnings, json, gzip
 import numpy as np
 import copy
 from sklearn.model_selection import GroupKFold
+warnings.filterwarnings('ignore')
+os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
 
 import torch
 import torch.nn as nn
@@ -298,7 +300,7 @@ if __name__ == "__main__":
     print("##sample size: {}".format(len(train_data)))
     print("## feature size: {}".format([v.size() for v in train_data.__getitem__(0)]))
 
-    if args.gpu == -1:
+    if args.gpu == -1 or  torch.cuda.is_available()==False:
         device = "cpu"
     else:
         os.environ["CUDA_VISIBLE_DEVICES"] = str(args.gpu)

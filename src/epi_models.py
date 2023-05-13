@@ -1,29 +1,27 @@
 #!/usr/bin/env python3
 
 import argparse, os, sys, time
-#import warnings, json, gzip
-
+# import warnings, json, gzip
+from transformers import BertModel, BertTokenizer
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.autograd import Variable
 import numpy as np
 
-# from performer_pytorch import SelfAttention
-
 from typing import Dict, List
+import transformers
 
 
 class PositionwiseFeedForward(nn.Module):
     def __init__(self, d_in, d_hid, dropout=0.1):
         super(PositionwiseFeedForward, self).__init__()
-        self.w_1 = nn.Linear(d_in, d_hid) # position-wise
-        self.w_2 = nn.Linear(d_hid, d_in) # position-wise
+        self.w_1 = nn.Linear(d_in, d_hid)  # position-wise
+        self.w_2 = nn.Linear(d_hid, d_in)  # position-wise
         self.layer_norm = nn.LayerNorm(d_in, eps=1e-6)
         self.dropout = nn.Dropout(dropout)
 
     def forward(self, x):
-
         residual = x
 
         x = self.w_2(F.relu(self.w_1(x)))
@@ -45,6 +43,7 @@ class PositionalEncoding(nn.Module):
 
     def _get_sinusoid_encoding_table(self, n_position, d_hid):
         ''' Sinusoid position encoding table '''
+
         # TODO: make it with torch instead of numpy
 
         def get_position_angle_vec(position):
@@ -62,15 +61,16 @@ class PositionalEncoding(nn.Module):
 
 class TransEPI(nn.Module):
     def __init__(self, in_dim: int,
-            cnn_channels: List[int], cnn_sizes: List[int], cnn_pool: List[int],
-            enc_layers: int, num_heads: int, d_inner: int,
-            da: int, r: int, att_C: float,
-            fc: List[int], fc_dropout: float, seq_len: int=-1, pos_enc: bool=False,
-            **kwargs):
+                 cnn_channels: List[int], cnn_sizes: List[int], cnn_pool: List[int],
+                 enc_layers: int, num_heads: int, d_inner: int,
+                 da: int, r: int, att_C: float,
+                 fc: List[int], fc_dropout: float, seq_len: int = -1, pos_enc: bool = False,
+                 **kwargs):
         super(TransEPI, self).__init__()
 
         major, minor = torch.__version__.split('.')[:2]
-        assert int(major) >= 1 and int(minor) >= 6, "PyTorch={}, while PyTorch>=1.6 is required".format(torch.__version__)
+        assert int(major) >= 1 and int(minor) >= 6, "PyTorch={}, while PyTorch>=1.6 is required".format(
+            torch.__version__)
         if int(minor) < 9:
             self.transpose = True
         else:
@@ -81,29 +81,29 @@ class TransEPI(nn.Module):
 
         self.cnn = nn.ModuleList()
         self.cnn.append(
-                nn.Sequential(
-                    nn.Conv1d(
-                        in_channels=in_dim,
-                        out_channels=cnn_channels[0],
-                        kernel_size=cnn_sizes[0],
-                        padding=cnn_sizes[0] // 2),
-                    nn.BatchNorm1d(cnn_channels[0]),
-                    nn.LeakyReLU(),
-                    nn.MaxPool1d(cnn_pool[0])
-                )
+            nn.Sequential(
+                nn.Conv1d(
+                    in_channels=in_dim,
+                    out_channels=cnn_channels[0],
+                    kernel_size=cnn_sizes[0],
+                    padding=cnn_sizes[0] // 2),
+                nn.BatchNorm1d(cnn_channels[0]),
+                nn.LeakyReLU(),
+                nn.MaxPool1d(cnn_pool[0])
             )
+        )
         seq_len //= cnn_pool[0]
         for i in range(len(cnn_sizes) - 1):
             self.cnn.append(
-                    nn.Sequential(
-                        nn.Conv1d(
-                            in_channels=cnn_channels[i],
-                            out_channels=cnn_channels[i + 1],
-                            kernel_size=cnn_sizes[i + 1],
-                            padding=cnn_sizes[i + 1] // 2),
-                        nn.BatchNorm1d(cnn_channels[i + 1]),
-                        nn.LeakyReLU(),
-                        nn.MaxPool1d(cnn_pool[i + 1])
+                nn.Sequential(
+                    nn.Conv1d(
+                        in_channels=cnn_channels[i],
+                        out_channels=cnn_channels[i + 1],
+                        kernel_size=cnn_sizes[i + 1],
+                        padding=cnn_sizes[i + 1] // 2),
+                    nn.BatchNorm1d(cnn_channels[i + 1]),
+                    nn.LeakyReLU(),
+                    nn.MaxPool1d(cnn_pool[i + 1])
                 )
             )
             seq_len //= cnn_pool[i + 1]
@@ -115,27 +115,28 @@ class TransEPI(nn.Module):
 
         if not self.transpose:
             enc_layer = nn.TransformerEncoderLayer(
-                    d_model=cnn_channels[-1],
-                    nhead=num_heads,
-                    dim_feedforward=d_inner,
-                    batch_first=True
-                )
+                d_model=cnn_channels[-1],
+                nhead=num_heads,
+                dim_feedforward=d_inner,
+                batch_first=True
+            )
         else:
-             enc_layer = nn.TransformerEncoderLayer(
-                    d_model=cnn_channels[-1],
-                    nhead=num_heads,
-                    dim_feedforward=d_inner,
-                )
+            enc_layer = nn.TransformerEncoderLayer(
+                d_model=cnn_channels[-1],
+                nhead=num_heads,
+                dim_feedforward=d_inner,
+            )
 
         self.encoder = nn.TransformerEncoder(
-                enc_layer,
-                num_layers=enc_layers
-                )
-
+            enc_layer,
+            num_layers=enc_layers
+        )
+        self.encoder1 = transformers.BertModel.from_pretrained('dmis-lab/biobert-base-cased-v1.1')
         self.da = da
         self.r = r
         self.att_C = att_C
         self.att_first = nn.Linear(cnn_channels[-1], da)
+        # self.att_first = nn.Linear(-1, da)
         self.att_first.bias.data.fill_(0)
         self.att_second = nn.Linear(da, r)
         self.att_second.bias.data.fill_(0)
@@ -144,27 +145,29 @@ class TransEPI(nn.Module):
             fc.append(1)
         self.fc = nn.ModuleList()
         self.fc.append(
-                nn.Sequential(
-                    nn.Dropout(p=fc_dropout),
-                    nn.Linear(cnn_channels[-1] * 4, fc[0])
-                )
+            nn.Sequential(
+                nn.Dropout(p=fc_dropout),
+                nn.Linear(cnn_channels[-1] * 4, fc[0])
             )
+        )
 
         for i in range(len(fc) - 1):
             self.fc.append(
-                    nn.Sequential(
-                        nn.ReLU(),
-                        nn.Linear(fc[i], fc[i + 1])
-                    )
+                nn.Sequential(
+                    nn.ReLU(),
+                    nn.Linear(fc[i], fc[i + 1])
                 )
+            )
         self.fc.append(nn.Sigmoid())
         self.fc_dist = nn.Sequential(
-                    nn.Linear(cnn_channels[-1] * 4, cnn_channels[-1]),
-                    nn.ReLU(),
-                    nn.Linear(cnn_channels[-1], 1)
-                )
-        #是否使用cuda(gpu)
+            nn.Linear(cnn_channels[-1] * 4, cnn_channels[-1]),
+            nn.ReLU(),
+            nn.Linear(cnn_channels[-1], 1)
+        )
+        # 是否使用cuda(gpu)
         self.is_cuda = torch.cuda.is_available()
+        # 分词
+        self.tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
 
     def forward(self, feats, enh_idx, prom_idx, return_att=False):
         # feats: (B, D, S)
@@ -173,22 +176,51 @@ class TransEPI(nn.Module):
         else:
             length = None
         div = 1
-        for cnn in  self.cnn:
+        for cnn in self.cnn:
             div *= cnn[-1].kernel_size
             enh_idx = torch.div(enh_idx, cnn[-1].kernel_size, rounding_mode="trunc")
             prom_idx = torch.div(prom_idx, cnn[-1].kernel_size, rounding_mode="trunc")
             feats = cnn(feats)
-        feats = feats.transpose(1, 2) # -> (B, S, D)
+        feats = feats.transpose(1, 2)  # -> (B, S, D)
         batch_size, seq_len, feat_dim = feats.size()
         if self.pos_enc is not None:
             feats = self.pos_enc(feats)
         if self.transpose:
             feats = feats.transpose(0, 1)
-        feats = self.encoder(feats) # (B, S, D)
+        input_ids = []
+        attention_masks = []
+        # 对每一个向量进行单独的分词
+        # Flatten the CNN output to a 1D tensor
+        print("=======================================================")
+        for index in range(batch_size):
+            sentence = feats[index].reshape(-1)
+            encoded_dict = self.tokenizer.encode_plus(
+                str(sentence),
+                add_special_tokens=True,
+                max_length=512,
+                pad_to_max_length=True,
+                return_attention_mask=True,
+                return_tensors='pt',
+                truncation=True
+            )
+            input_ids.append(encoded_dict['input_ids'])
+            attention_masks.append(encoded_dict['attention_mask'])
+        input_ids = torch.cat(input_ids, dim=0)
+        attention_masks = torch.cat(attention_masks, dim=0)
+        device =  self.encoder1.device
+        if input_ids.device != device:
+            input_ids = input_ids.to(device=device)
+            attention_masks = attention_masks.to(device=device)
+        temp = self.encoder1(input_ids=input_ids, attention_mask=attention_masks).last_hidden_state  # (B, S, D)
+        print(temp.shape)
+        temp1 = self.encoder(feats)  # (B, S, D)
+        print(temp1.shape)
+        sys.exit(0)
+        feats = temp
         if self.transpose:
             feats = feats.transpose(0, 1)
 
-        out = torch.tanh(self.att_first(feats)) # (B, S, da)
+        out = torch.tanh(self.att_first(feats))  # (B, S, da)
         if length is not None:
             length = torch.div(length, div, rounding_mode="trunc")
             max_len = max(length)
@@ -198,12 +230,12 @@ class TransEPI(nn.Module):
             assert mask.size() == out.size()
             out = out * mask.to(out.device)
             del mask
-        out = F.softmax(self.att_second(out), 1) # (B, S, r)
-        att = out.transpose(1, 2) # (B, r, S)
+        out = F.softmax(self.att_second(out), 1)  # (B, S, r)
+        att = out.transpose(1, 2)  # (B, r, S)
         del out
-        seq_embed = torch.matmul(att, feats) # (B, r, D)
+        seq_embed = torch.matmul(att, feats)  # (B, r, D)
         # print(seq_embed.size())
-        base_idx = seq_len * torch.arange(batch_size) # .to(feats.device)
+        base_idx = seq_len * torch.arange(batch_size)  # .to(feats.device)
         enh_idx = enh_idx.long().view(batch_size) + base_idx
         prom_idx = prom_idx.long().view(batch_size) + base_idx
         feats = feats.reshape(-1, feat_dim)
@@ -227,8 +259,7 @@ class TransEPI(nn.Module):
             return seq_embed
 
     def l2_matrix_norm(self, m):
-        return torch.sum(torch.sum(torch.sum(m**2, 1), 1)**0.5).type(torch.cuda.DoubleTensor)
-
+        return torch.sum(torch.sum(torch.sum(m ** 2, 1), 1) ** 0.5).type(torch.cuda.DoubleTensor)
 
 
 # class TransformerModule(nn.Module):
@@ -388,17 +419,15 @@ class TransEPI(nn.Module):
 #         return feats
 
 
-
 def get_args():
     p = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    #p.add_argument()
+    # p.add_argument()
 
-    #p.add_argument('--seed', type=int, default=2020)
+    # p.add_argument('--seed', type=int, default=2020)
     return p
 
 
 if __name__ == "__main__":
     p = get_args()
     args = p.parse_args()
-    #np.random.seed(args.seed)
-
+    # np.random.seed(args.seed)

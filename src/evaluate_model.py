@@ -209,10 +209,10 @@ if __name__ == "__main__":
     result = []
     for epoch in range(0, 11):
         num = epoch / 10.0
-        print()
-        print()
-        print()
-        print("epoch:",num)
+        # print()
+        # print()
+        # print()
+        # print("epoch:",num)
         pred_arr = (predict_arr > num).astype(int)
 
         p = np.sum(true_arr == 1)
@@ -229,9 +229,9 @@ if __name__ == "__main__":
         recall = n1 / n
 
         f1 = f1_score(y_true, y_pred, average='binary')
-
-        result.append([num, accuracy,precision, recall, accuracy, f1])
-    #
-#
-result_df = pd.DataFrame(result, columns=['num',"accuracy", 'precision', 'recall', 'accuracy', 'f1_score'])
-print(result_df)
+        print(num, accuracy,precision, recall, accuracy, f1)
+#         result.append([num, accuracy,precision, recall, accuracy, f1])
+#     #
+# #
+# result_df = pd.DataFrame(result, columns=['num',"accuracy", 'precision', 'recall', 'accuracy', 'f1_score'])
+# print(result_df)
