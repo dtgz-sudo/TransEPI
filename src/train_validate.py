@@ -5,6 +5,7 @@ import warnings, json, gzip
 import numpy as np
 import copy
 from sklearn.model_selection import GroupKFold
+
 warnings.filterwarnings('ignore')
 os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
 
@@ -97,7 +98,7 @@ def train_validate_test(
 
     if use_scheduler:
         scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=5, T_mult=2)
-    best_acc,  best_F1 = 0,0
+    best_acc, best_F1 = 0, 0
     for epoch_idx in range(num_epoch):
         model.train()
         # 这段代码是一个训练过程的循环，用于训练一个深度学习模型。其中，如果这个模型有一个名为"att_C"的属性，就会进行以下的操作：
@@ -106,7 +107,7 @@ def train_validate_test(
         # 3、计算损失函数 loss，包括二分类交叉熵损失 bce_loss、正则化项 penal 以及平方误差损失 mse_loss(dists, pred_dists)，其中 model.att_C 表示正则化项的系数。
         # 4、删除正则化项 penal 和单位矩阵 identity。
         # 5、如果模型没有 "att_C" 属性，则只进行前向传播并计算二分类交叉熵损失 bce_loss。
-        train_true, train_pred  = None, None
+        train_true, train_pred = None, None
         for feats, dists, enh_idxs, prom_idxs, labels in tqdm.tqdm(train_loader):
             feats, dists, labels = feats.to(device), dists.to(device), labels.to(device)
             if hasattr(model, "att_C"):
@@ -136,28 +137,29 @@ def train_validate_test(
                 scheduler.step()
 
         model.eval()
-        accuracy, precision, recall, f1, tp, fp, tn, fn = misc_utils.calc_metrics(train_true.squeeze(), train_pred.squeeze(), 0.5)
-        print("====================================训练=============================================",wait)
-        print("训练集合正例准确率,Recall(召回率):", recall,",负例准确率:",tn *1.0 / (tn +fp),",F1",f1)
+        accuracy, precision, recall, f1, tp, fp, tn, fn = misc_utils.calc_metrics(train_true.squeeze(),
+                                                                                  train_pred.squeeze(), 0.5)
+        print("====================================训练=============================================", wait)
+        print("训练集合正例准确率,Recall(召回率):", recall, ",负例准确率:", tn * 1.0 / (tn + fp), ",F1", f1)
         valid_pred, valid_true = predict(model, valid_loader)
         val_AUC, val_AUPR = misc_utils.evaluator(valid_true, valid_pred, out_keys=["AUC", "AUPR"])
         print("\nvalid_result({})\t{:.4f}\t{:.4f}\t({})".format(epoch_idx, val_AUC, val_AUPR, time.asctime()))
-        accuracy, precision, recall, f1,tp, fp, tn, fn  =  misc_utils.calc_metrics(valid_true,valid_pred,0.5)
+        accuracy, precision, recall, f1, tp, fp, tn, fn = misc_utils.calc_metrics(valid_true, valid_pred, 0.5)
         accuracy1 = recall
         print("====================================验证=============================================")
-        print("验证集合正例准确率,Recall(召回率):", recall,",负例准确率:",tn *1.0 / (tn +fp),",F1",f1)
+        print("验证集合正例准确率,Recall(召回率):", recall, ",负例准确率:", tn * 1.0 / (tn + fp), ",F1", f1)
 
         # if val_AUC + val_AUPR > best_val_auc + best_val_aupr:
         # if val_AUC + val_AUPR > best_val_auc + best_val_aupr:
         if accuracy1 > best_acc:
             best_acc = accuracy1
-            best_F1  = f1
+            best_F1 = f1
             wait = 0
             best_epoch, best_val_auc, best_val_aupr = epoch_idx, val_AUC, val_AUPR
             test_pred, test_true = predict(model, test_loader)
             accuracy, precision, recall, f1, tp, fp, tn, fn = misc_utils.calc_metrics(test_true, test_pred, 0.5)
             print("====================================测试=============================================")
-            print("测试集合正例准确率,Recall(召回率):", recall,",负例准确率:",tn *1.0 / (tn +fp),",F1",f1)
+            print("测试集合正例准确率,Recall(召回率):", recall, ",负例准确率:", tn * 1.0 / (tn + fp), ",F1", f1)
             np.savetxt(
                 "{}/test_result.{}.txt.gz".format(outdir, epoch_idx),
                 X=np.concatenate((test_pred.reshape(-1, 1), test_true.reshape(-1, 1)), axis=1),
@@ -219,10 +221,20 @@ def get_args():
 if __name__ == "__main__":
     p = get_args()
     args = p.parse_args()
+    if args.gpu == -1 or torch.cuda.is_available() == False:
+        device = "cpu"
+    else:
+        os.environ["CUDA_VISIBLE_DEVICES"] = str(args.gpu)
+        device = "cuda"
+    device = torch.device(device)
     np.random.seed(args.seed)
     torch.manual_seed(args.seed)
 
     config = json.load(open(args.config))
+    config['batch'] = args.batch_size
+    config['device'] =device
+    config["model_opts"]['batch'] = args.batch_size
+    config["model_opts"]['device'] = device
 
     # all_data = epi_dataset.EPIDataset(**config["data_opts"])
     train_config = config.copy()
@@ -242,14 +254,14 @@ if __name__ == "__main__":
                 **valid_test_config["data_opts"]
             )
             chr = []
-            count =0
+            count = 0
             for i in valid_test_data.samples:
                 chr.append(count)
-                count +=1
+                count += 1
             random.shuffle(chr)
-            train_idx = chr[0:int(len(chr)*0.8)]
-            valid_idx = chr[int(len(chr)*0.8):int(len(chr)*0.9)]
-            test_idx = chr[int(len(chr)*0.9):]
+            train_idx = chr[0:int(len(chr) * 0.8)]
+            valid_idx = chr[int(len(chr) * 0.8):int(len(chr) * 0.9)]
+            test_idx = chr[int(len(chr) * 0.9):]
             valid_data = Subset(valid_test_data, indices=valid_idx)
             test_data = Subset(valid_test_data, indices=test_idx)
             train_sub_data = Subset(valid_test_data, indices=train_idx)
@@ -300,13 +312,6 @@ if __name__ == "__main__":
     print("##sample size: {}".format(len(train_data)))
     print("## feature size: {}".format([v.size() for v in train_data.__getitem__(0)]))
 
-    if args.gpu == -1 or  torch.cuda.is_available()==False:
-        device = "cpu"
-    else:
-        os.environ["CUDA_VISIBLE_DEVICES"] = str(args.gpu)
-        device = "cuda"
-    device = torch.device(device)
-
     model_class = getattr(epi_models, config["model_opts"]["model"])
     model = model_class(**config["model_opts"]).to(device)
 
@@ -331,6 +336,7 @@ if __name__ == "__main__":
         device=device,
         use_scheduler=config["train_opts"]["use_scheduler"]
     )
+    model.closeThreadPool()
 
 # nohup python -u train_validate.py --gpu 0 --c TransEPI_EPI_zdf_train_val.json --train ../data/BENGI/GM12878.CTCF-ChIAPET-Benchmark.v3.tsv.gz --valid  ../data/BENGI/GM12878.HiC-Benchmark.v3.tsv.gz -o zdf_train_val  > train_val_samplesData_gpu.log 2>&1 &
 # nohup python -u train_validate.py --gpu -1 --c TransEPI_EPI_zdf_train_val.json --train ../data/BENGI/GM12878.CTCF-ChIAPET-Benchmark.v3.tsv.gz --valid  ../data/BENGI/GM12878.HiC-Benchmark.v3.tsv.gz -o zdf_train_val  > train_val_samplesData_cpu.log 2>&1 &
@@ -340,22 +346,21 @@ if __name__ == "__main__":
 # --gpu 0 --c TransEPI_EPI_zdf_train_val.json --train ../data/BENGI/GM12878.CTCF-ChIAPET-Benchmark.v3.tsv.gz  --valid ../data/BENGI/HeLa.CTCF-ChIAPET-Benchmark.v3.tsv.gz --test ../data/BENGI/HeLa.HiC-Benchmark.v3.tsv.gz -b 128
 # --gpu 0 --c TransEPI_EPI_zdf_train_val.json --train ../data/BENGI/GM12878.CTCF-ChIAPET-Benchmark.v3.tsv.gz --valid ../data/BENGI/HeLa.CTCF-ChIAPET-Benchmark.v3.tsv.gz --test ../data/BENGI/HeLa.HiC-Benchmark.v3.tsv.gz -b 128 -o zdfoutput1
 # --gpu 0 --c TransEPI_EPI_zdf_train_val.json--train ../data/BENGI/GM12878.CTCF-ChIAPET-Benchmark.v3.tsv.gz ../data/BENGI/GM12878.HiC-Benchmark.v3.tsv.gz ../data/BENGI/GM12878.RNAPII-ChIAPET-Benchmark.v3.tsv.gz ../data/BENGI/HeLa.CTCF-ChIAPET-Benchmark.v3.tsv.gz ../data/BENGI/HeLa.HiC-Benchmark.v3.tsv.gz ../data/BENGI/IMR90.HiC-Benchmark.v3.tsv.gz--valid ../data/BENGI/K562.HiC-Benchmark.v3.tsv.gz --test ../data/BENGI/NHEK.HiC-Benchmark.v3.tsv.gz -b 128 -o zdfoutput1
-#全部训练集 --gpu 0 --c TransEPI_EPI_zdf_train_val.json --train ../data/BENGI/GM12878.CTCF-ChIAPET-Benchmark.v3.tsv.gz ../data/BENGI/GM12878.HiC-Benchmark.v3.tsv.gz ../data/BENGI/GM12878.RNAPII-ChIAPET-Benchmark.v3.tsv.gz ../data/BENGI/HeLa.CTCF-ChIAPET-Benchmark.v3.tsv.gz --valid ../data/BENGI/K562.HiC-Benchmark.v3.tsv.gz --test ../data/BENGI/NHEK.HiC-Benchmark.v3.tsv.gz -b 128 -o zdfoutput1
-#1个训练集 --gpu 0 --c TransEPI_EPI_zdf_train_val.json --train ../data/BENGI/GM12878.CTCF-ChIAPET-Benchmark.v3.tsv.gz --valid ../data/BENGI/K562.HiC-Benchmark.v3.tsv.gz --test ../data/BENGI/NHEK.HiC-Benchmark.v3.tsv.gz -b 128 -o zdfoutput1
+# 全部训练集 --gpu 0 --c TransEPI_EPI_zdf_train_val.json --train ../data/BENGI/GM12878.CTCF-ChIAPET-Benchmark.v3.tsv.gz ../data/BENGI/GM12878.HiC-Benchmark.v3.tsv.gz ../data/BENGI/GM12878.RNAPII-ChIAPET-Benchmark.v3.tsv.gz ../data/BENGI/HeLa.CTCF-ChIAPET-Benchmark.v3.tsv.gz --valid ../data/BENGI/K562.HiC-Benchmark.v3.tsv.gz --test ../data/BENGI/NHEK.HiC-Benchmark.v3.tsv.gz -b 128 -o zdfoutput1
+# 1个训练集 --gpu 0 --c TransEPI_EPI_zdf_train_val.json --train ../data/BENGI/GM12878.CTCF-ChIAPET-Benchmark.v3.tsv.gz --valid ../data/BENGI/K562.HiC-Benchmark.v3.tsv.gz --test ../data/BENGI/NHEK.HiC-Benchmark.v3.tsv.gz -b 128 -o zdfoutput1
 
-#均衡采样 随机打乱顺序 8:1:1
-#../data/BENGI/GM12878.CTCF-ChIAPET-Benchmark.v3.tsv.gz   Best epoch/Recall/F1: 22	0.9761	0.8813
-#../data/BENGI/GM12878.CTCF-ChIAPET-Benchmark.v3.tsv.gz   Best epoch/Recall/F1: 16	0.9705	0.9085
-#../data/BENGI/GM12878.RNAPII-ChIAPET-Benchmark.v3.tsv.gz Best epoch/Recall/F1: 16	0.9705	0.9085
-#../data/BENGI/HeLa.CTCF-ChIAPET-Benchmark.v3.tsv.gz     Best epoch/Recall/F1: 7	0.8786	0.8849
-#../data/BENGI/HeLa.HiC-Benchmark.v3.tsv.gz               Best epoch/Recall/F1: 9	0.9320	0.8118
-#../data/BENGI/HeLa.RNAPII-ChIAPET-Benchmark.v3.tsv.gz    Best epoch/Recall/F1: 27	0.9841	0.9254
-#../data/BENGI/HMEC.HiC-Benchmark.v3.tsv.gz               Best epoch/Recall/F1: 20	0.9390	0.9352
-#../data/BENGI/IMR90.HiC-Benchmark.v3.tsv.gz              Best epoch/Recall/F1: 22	0.8841	0.8592
-#../data/BENGI/K562.HiC-Benchmark.v3.tsv.gz               Best epoch/Recall/F1: 28	0.8599	0.7741
-#../data/BENGI/NHEK.HiC-Benchmark.v3.tsv.gz               Best epoch/Recall/F1: 30	0.9417	0.9440
+# 均衡采样 随机打乱顺序 8:1:1
+# ../data/BENGI/GM12878.CTCF-ChIAPET-Benchmark.v3.tsv.gz   Best epoch/Recall/F1: 22	0.9761	0.8813
+# ../data/BENGI/GM12878.CTCF-ChIAPET-Benchmark.v3.tsv.gz   Best epoch/Recall/F1: 16	0.9705	0.9085
+# ../data/BENGI/GM12878.RNAPII-ChIAPET-Benchmark.v3.tsv.gz Best epoch/Recall/F1: 16	0.9705	0.9085
+# ../data/BENGI/HeLa.CTCF-ChIAPET-Benchmark.v3.tsv.gz     Best epoch/Recall/F1: 7	0.8786	0.8849
+# ../data/BENGI/HeLa.HiC-Benchmark.v3.tsv.gz               Best epoch/Recall/F1: 9	0.9320	0.8118
+# ../data/BENGI/HeLa.RNAPII-ChIAPET-Benchmark.v3.tsv.gz    Best epoch/Recall/F1: 27	0.9841	0.9254
+# ../data/BENGI/HMEC.HiC-Benchmark.v3.tsv.gz               Best epoch/Recall/F1: 20	0.9390	0.9352
+# ../data/BENGI/IMR90.HiC-Benchmark.v3.tsv.gz              Best epoch/Recall/F1: 22	0.8841	0.8592
+# ../data/BENGI/K562.HiC-Benchmark.v3.tsv.gz               Best epoch/Recall/F1: 28	0.8599	0.7741
+# ../data/BENGI/NHEK.HiC-Benchmark.v3.tsv.gz               Best epoch/Recall/F1: 30	0.9417	0.9440
 
 
 # 原来的正负例子采样方式
-#../data/BENGI/GM12878.CTCF-ChIAPET-Benchmark.v3.tsv.gz  Best epoch/Recall/F1: 35	0.8780	0.8016
-
+# ../data/BENGI/GM12878.CTCF-ChIAPET-Benchmark.v3.tsv.gz  Best epoch/Recall/F1: 35	0.8780	0.8016

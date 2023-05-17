@@ -8,7 +8,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.autograd import Variable
 import numpy as np
-
+import concurrent.futures
 from typing import Dict, List
 import transformers
 
@@ -59,12 +59,14 @@ class PositionalEncoding(nn.Module):
         return x + self.pos_table[:, :x.size(1)].clone().detach()
 
 
+
+
 class TransEPI(nn.Module):
     def __init__(self, in_dim: int,
                  cnn_channels: List[int], cnn_sizes: List[int], cnn_pool: List[int],
                  enc_layers: int, num_heads: int, d_inner: int,
                  da: int, r: int, att_C: float,
-                 fc: List[int], fc_dropout: float, seq_len: int = -1, pos_enc: bool = False,
+                 fc: List[int], fc_dropout: float, seq_len: int = -1, pos_enc: bool = False,batch=16,device=None,
                  **kwargs):
         super(TransEPI, self).__init__()
 
@@ -78,7 +80,7 @@ class TransEPI(nn.Module):
 
         if pos_enc:
             assert seq_len > 0
-
+        self.device = device
         self.cnn = nn.ModuleList()
         self.cnn.append(
             nn.Sequential(
@@ -131,7 +133,13 @@ class TransEPI(nn.Module):
             enc_layer,
             num_layers=enc_layers
         )
-        self.encoder1 = transformers.BertModel.from_pretrained('dmis-lab/biobert-base-cased-v1.1')
+        # self.encoder1 = transformers.BertModel.from_pretrained('dmis-lab/biobert-base-cased-v1.1')
+        self.encoder1 = transformers.AutoTokenizer.from_pretrained('dmis-lab/biobert-base-cased-v1.1')
+        #bert 使用卷积转换到transfomer
+        # self.input_tensor = torch.randn(batch, 512, 768)
+        self.conv_layer = nn.Conv1d(768, 64, kernel_size=1)  # 输入通道数为768，输出通道数为64，卷积核大小为1
+
+        self.batch = batch
         self.da = da
         self.r = r
         self.att_C = att_C
@@ -167,7 +175,10 @@ class TransEPI(nn.Module):
         # 是否使用cuda(gpu)
         self.is_cuda = torch.cuda.is_available()
         # 分词
-        self.tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
+        num_cpus = os.cpu_count()
+        thread_pool_size = num_cpus * 2+1
+        # 创建线程池
+        self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=thread_pool_size)
 
     def forward(self, feats, enh_idx, prom_idx, return_att=False):
         # feats: (B, D, S)
@@ -191,26 +202,12 @@ class TransEPI(nn.Module):
         attention_masks = []
         # 对每一个向量进行单独的分词
         # Flatten the CNN output to a 1D tensor
-        print("=======================================================")
-        for index in range(batch_size):
-            sentence = feats[index].reshape(-1)
-            encoded_dict = self.tokenizer.encode_plus(
-                str(sentence),
-                add_special_tokens=True,
-                max_length=512,
-                pad_to_max_length=True,
-                return_attention_mask=True,
-                return_tensors='pt',
-                truncation=True
-            )
-            input_ids.append(encoded_dict['input_ids'])
-            attention_masks.append(encoded_dict['attention_mask'])
-        input_ids = torch.cat(input_ids, dim=0)
-        attention_masks = torch.cat(attention_masks, dim=0)
-        device =  self.encoder1.device
-        if input_ids.device != device:
-            input_ids = input_ids.to(device=device)
-            attention_masks = attention_masks.to(device=device)
+        # print("===========================开始分词============================")
+        input_ids, attention_masks = self.tokenize_batch(feats)#并行分词
+        # if input_ids.devisce != self.device:
+        #     input_ids = input_ids.to(device=self.device)
+        #     attention_masks = attention_masks.to(device=self.device)
+        # print("===========================bert计算============================")
         temp = self.encoder1(input_ids=input_ids, attention_mask=attention_masks).last_hidden_state  # (B, S, D)
         print(temp.shape)
         temp1 = self.encoder(feats)  # (B, S, D)
@@ -220,7 +217,8 @@ class TransEPI(nn.Module):
         if self.transpose:
             feats = feats.transpose(0, 1)
 
-        out = torch.tanh(self.att_first(feats))  # (B, S, da)
+        # out = torch.tanh(self.att_first(feats))  # (B, S, da)
+        out = torch.tanh(self.att_first((self.conv_tensor(feats)))) # (B, S, da)
         if length is not None:
             length = torch.div(length, div, rounding_mode="trunc")
             max_len = max(length)
@@ -262,6 +260,49 @@ class TransEPI(nn.Module):
         return torch.sum(torch.sum(torch.sum(m ** 2, 1), 1) ** 0.5).type(torch.cuda.DoubleTensor)
 
 
+    def conv_tensor(self,feats):
+        # bert 的输出转换为原来的transformer的输出
+        output_tensor = self.conv_layer(feats.permute(0, 2, 1))  # 将输入张量维度调整为(16, 768, 512)后进行卷积操作
+        output_tensor = output_tensor.permute(0, 2, 1)  # 调整输出张量的维度为(16, 512, 64)
+        return output_tensor
+
+    def tokenize_sentence(self,tensor):
+        '''
+        进行分词操作
+        '''
+        sentence_np = tensor.reshape(-1).detach().cpu().numpy()
+        sentence = ','.join('{:.2f}'.format(i) for i in sentence_np)
+        encoded_dict = self.tokenizer.encode_plus(
+            sentence,
+            add_special_tokens=True,
+            max_length=512,
+            pad_to_max_length=True,
+            return_attention_mask=True,
+            return_tensors='pt',
+            truncation=True
+        )
+        return encoded_dict['input_ids'], encoded_dict['attention_mask']
+
+    def tokenize_batch(self,feats):
+        '''
+        向线程池提交任务
+        '''
+        input_ids = []
+        attention_masks = []
+        futures = []
+
+        for index in range(self.batch):
+            futures.append(self.executor.submit(self.tokenize_batch, feats[index]))
+
+        for future in concurrent.futures.as_completed(futures):
+            encoded_input_ids, encoded_attention_mask = future.result()
+            input_ids.append(encoded_input_ids)
+            attention_masks.append(encoded_attention_mask)
+
+        return input_ids, attention_masks
+    def closeProcessPool(self):
+        # 关闭线程池
+        self.executor.shutdown()
 # class TransformerModule(nn.Module):
 #     def __init__(self, in_dim: int,
 #             cnn_channels: List[int], cnn_sizes: List[int], cnn_pool: List[int],
