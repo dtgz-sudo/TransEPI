@@ -11,8 +11,11 @@ def generate_random_string(length):
 sentences=[]
 # Load data
 tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
+temp = torch.randn(10, 100)
 for i in  range(10):
-    sentences.append('This is the first sentence' + generate_random_string(1000))
+    sentence_np = temp[i].reshape(-1).numpy()
+    sentence = ','.join('{:.2f}'.format(i) for i in sentence_np)
+    sentences.append('This is the first sentence' +sentence)
 input_ids = []
 attention_masks = []
 for sentence in sentences:
@@ -31,11 +34,11 @@ for sentence in sentences:
 
 input_ids = torch.cat(input_ids, dim=0)
 attention_masks = torch.cat(attention_masks, dim=0)
-dataset = TensorDataset(input_ids, attention_masks)
-dataloader = DataLoader(dataset, batch_size=3)
+# dataset = TensorDataset(input_ids, attention_masks)
+# dataloader = DataLoader(dataset, batch_size=3)
 
 # Load model
-model = BertModel.from_pretrained('bert-base-uncased')
+# model = BertModel.from_pretrained('bert-base-uncased')
 model = BertModel.from_pretrained('dmis-lab/biobert-base-cased-v1.1')
 with torch.no_grad():
     outputs = model(input_ids=input_ids, attention_mask=attention_masks).last_hidden_state
