@@ -193,6 +193,8 @@ class TransEPI(nn.Module):
                 )
 
         self.tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
+        num_cpus = os.cpu_count()
+        self.executor = concurrent.futures.ProcessPoolExecutor(max_workers=num_cpus*2+1)
 
     def forward(self, feats, enh_idx, prom_idx, return_att=False):
         # feats: (B, D, S)
@@ -226,24 +228,24 @@ class TransEPI(nn.Module):
             feats = self.encoder1(input_ids=input_ids, attention_mask=attention_masks).last_hidden_state  # (B, S, D)
         if self.transpose:
             feats = feats.transpose(0, 1)
-
+        feats =self.conv_tensor(feats)
         # out = torch.tanh(self.att_first(feats))  # (B, S, da) (16,512,768)==>( 16, 500, 180)
-        out = torch.tanh(self.att_first((self.conv_tensor(feats))))  # (B, S, da)
+        out = torch.tanh(self.att_first((feats)))  # (B, S, da)
         if length is not None:
             length = torch.div(length, div, rounding_mode="trunc")
-        max_len = max(length)
-        mask = torch.cat((
-            [torch.cat((torch.ones(1, m, self.da), torch.zeros(1, max_len - m, self.da)), dim=1) for m in length]
-        ), dim=0)
-        assert mask.size() == out.size()
-        out = out * mask.to(out.device)
-        del mask
-        out = F.softmax(self.att_second(out), 1)  # (B, S, r)
-        att = out.transpose(1, 2)  # (B, r, S)
+            max_len = max(length)
+            mask = torch.cat((
+                [torch.cat((torch.ones(1, m, self.da), torch.zeros(1, max_len - m, self.da)), dim=1) for m in length]
+            ), dim=0)
+            assert mask.size() == out.size()
+            out = out * mask.to(out.device)
+            del mask
+        out = F.softmax(self.att_second(out), 1) # (B, S, r)
+        att = out.transpose(1, 2) # (B, r, S)
         del out
-        seq_embed = torch.matmul(att, feats)  # (B, r, D)
+        seq_embed = torch.matmul(att, feats) # (B, r, D)
         # print(seq_embed.size())
-        base_idx = seq_len * torch.arange(batch_size)  # .to(feats.device)
+        base_idx = seq_len * torch.arange(batch_size) # .to(feats.device)
         enh_idx = enh_idx.long().view(batch_size) + base_idx
         prom_idx = prom_idx.long().view(batch_size) + base_idx
         feats = feats.reshape(-1, feat_dim)
@@ -274,7 +276,7 @@ class TransEPI(nn.Module):
         # self.fc = nn.Linear(384, 180)
         # 将原始张量进行卷积操作
         feats = self.conv_layer(feats)
-        feats = feats.view(16, 500, -1)
+        feats = feats.view(self.batch, 500, -1)
         feats= self.fc_larer(feats)
         return feats
 
