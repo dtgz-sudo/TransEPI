@@ -28,7 +28,8 @@ def tokenize_sentence(tokenizer, sentence_np, sort_index):
         pad_to_max_length=True,
         return_attention_mask=True,
         return_tensors='pt',
-        truncation=True
+        truncation=True,
+
     )
     return encoded_dict['input_ids'], encoded_dict['attention_mask'], sort_index
 
