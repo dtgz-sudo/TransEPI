@@ -73,7 +73,7 @@ def predict(model: nn.Module, data_loader: DataLoader, device=torch.device('cuda
     for feats, _, enh_idxs, prom_idxs, labels in data_loader:
         feats, labels = feats.to(device), labels.to(device)
         # enh_idxs, prom_idxs = enh_idxs.to(device), prom_idxs.to(device)
-        pred = model(feats, enh_idx=enh_idxs, prom_idx=prom_idxs)
+        pred ,length,attr= model(feats, enh_idx=enh_idxs, prom_idx=prom_idxs)
         pred = pred.detach().cpu().numpy()
         labels = labels.detach().cpu().numpy()
         if result is None:
@@ -110,15 +110,18 @@ def train_validate_test(
         train_true, train_pred = None, None
         for feats, dists, enh_idxs, prom_idxs, labels in tqdm.tqdm(train_loader):
             feats, dists, labels = feats.to(device), dists.to(device), labels.to(device)
-            if hasattr(model, "att_C"):
+            # if hasattr(model, "att_C"):
+            if  True:
                 pred, pred_dists, att = model(feats, enh_idxs, prom_idxs, return_att=True)
-                attT = att.transpose(1, 2)
-                identity = torch.eye(att.size(1)).to(device)
-                identity = Variable(identity.unsqueeze(0).expand(labels.size(0), att.size(1), att.size(1)))
-                penal = model.l2_matrix_norm(torch.matmul(att, attT) - identity)
-                loss = bce_loss(pred, labels) + (model.att_C * penal / labels.size(0)).type(
-                    torch.cuda.FloatTensor) + mse_loss(dists, pred_dists)
-                del penal, identity
+                # attT = att.transpose(1, 2)
+                # identity = torch.eye(att.size(1)).to(device)
+                # identity = Variable(identity.unsqueeze(0).expand(labels.size(0), att.size(1), att.size(1)))
+                # penal = model.l2_matrix_norm(torch.matmul(att, attT) - identity)
+                # loss = bce_loss(pred, labels) + (model.att_C * penal / labels.size(0)).type(
+                #     torch.cuda.FloatTensor) + mse_loss(dists, pred_dists)
+                loss = bce_loss(pred, labels)  + mse_loss(dists, pred_dists)
+                # loss = bce_loss(pred, labels)
+                # del penal, identity
 
                 if train_true is None:
                     train_pred = pred.detach().cpu().numpy()
@@ -336,7 +339,7 @@ if __name__ == "__main__":
         device=device,
         use_scheduler=config["train_opts"]["use_scheduler"]
     )
-    model.closeThreadPool()
+    # model.closeThreadPool()
 
 # nohup python -u train_validate.py --gpu 0 --c TransEPI_EPI_zdf_train_val.json --train ../data/BENGI/GM12878.CTCF-ChIAPET-Benchmark.v3.tsv.gz --valid  ../data/BENGI/GM12878.HiC-Benchmark.v3.tsv.gz -o zdf_train_val  > train_val_samplesData_gpu.log 2>&1 &
 # nohup python -u train_validate.py --gpu -1 --c TransEPI_EPI_zdf_train_val.json --train ../data/BENGI/GM12878.CTCF-ChIAPET-Benchmark.v3.tsv.gz --valid  ../data/BENGI/GM12878.HiC-Benchmark.v3.tsv.gz -o zdf_train_val  > train_val_samplesData_cpu.log 2>&1 &
@@ -364,3 +367,5 @@ if __name__ == "__main__":
 
 # 原来的正负例子采样方式
 # ../data/BENGI/GM12878.CTCF-ChIAPET-Benchmark.v3.tsv.gz  Best epoch/Recall/F1: 35	0.8780	0.8016
+
+# --gpu 0 --c TransEPI_EPI_zdf_train_val.json --train ../data/BENGI/GM12878.CTCF-ChIAPET-Benchmark.v3.tsv.gz ../data/BENGI/GM12878.HiC-Benchmark.v3.tsv.gz ../data/BENGI/GM12878.RNAPII-ChIAPET-Benchmark.v3.tsv.gz ../data/BENGI/HeLa.CTCF-ChIAPET-Benchmark.v3.tsv.gz ../data/BENGI/HeLa.HiC-Benchmark.v3.tsv.gz ../data/BENGI/HeLa.RNAPII-ChIAPET-Benchmark.v3.tsv.gz --valid ../data/BENGI/NHEK.HiC-Benchmark.v3.tsv.gz -b 64 -o zdfoutput1

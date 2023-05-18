@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 import warnings
 
+from src.classic_model.AlexNet import AlexNet
+
 warnings.filterwarnings('ignore')
 import argparse, os, sys, time
 # import warnings, json, gzip
@@ -85,7 +87,7 @@ class TransEPI(nn.Module):
                  cnn_channels: List[int], cnn_sizes: List[int], cnn_pool: List[int],
                  enc_layers: int, num_heads: int, d_inner: int,
                  da: int, r: int, att_C: float,
-                 fc: List[int], fc_dropout: float, seq_len: int = -1, pos_enc: bool = False, batch=16, device=None,
+                 fc: List[int], fc_dropout: float, seq_len: int = -1, pos_enc: bool = False, device=None,
                  **kwargs):
         super(TransEPI, self).__init__()
 
@@ -97,177 +99,193 @@ class TransEPI(nn.Module):
         else:
             self.transpose = False
 
-        if pos_enc:
-            assert seq_len > 0
-        self.device = device
-        self.cnn = nn.ModuleList()
-        self.cnn.append(
-                nn.Sequential(
-                    nn.Conv1d(
-                        in_channels=in_dim,
-                        out_channels=cnn_channels[0],
-                        kernel_size=cnn_sizes[0],
-                        padding=cnn_sizes[0] // 2),
-                    nn.BatchNorm1d(cnn_channels[0]),
-                    nn.LeakyReLU(),
-                    nn.MaxPool1d(cnn_pool[0])
-                )
-            )
-        seq_len //= cnn_pool[0]
-        for i in range(len(cnn_sizes) - 1):
-            self.cnn.append(
-                    nn.Sequential(
-                        nn.Conv1d(
-                            in_channels=cnn_channels[i],
-                            out_channels=cnn_channels[i + 1],
-                            kernel_size=cnn_sizes[i + 1],
-                            padding=cnn_sizes[i + 1] // 2),
-                        nn.BatchNorm1d(cnn_channels[i + 1]),
-                        nn.LeakyReLU(),
-                        nn.MaxPool1d(cnn_pool[i + 1])
-                )
-            )
-            seq_len //= cnn_pool[i + 1]
-
-        if pos_enc:
-            self.pos_enc = PositionalEncoding(d_hid=cnn_channels[-1], n_position=seq_len)
-        else:
-            self.pos_enc = None
-
-        if not self.transpose:
-            enc_layer = nn.TransformerEncoderLayer(
-                    d_model=cnn_channels[-1],
-                    nhead=num_heads,
-                    dim_feedforward=d_inner,
-                    batch_first=True
-                )
-        else:
-             enc_layer = nn.TransformerEncoderLayer(
-                    d_model=cnn_channels[-1],
-                    nhead=num_heads,
-                    dim_feedforward=d_inner,
-                )
-
-        self.encoder = nn.TransformerEncoder(
-            enc_layer,
-            num_layers=enc_layers
-        )
-        # self.encoder1 = transformers.BertModel.from_pretrained('dmis-lab/biobert-base-cased-v1.1')
-        self.encoder1 = BertModel.from_pretrained('dmis-lab/biobert-base-cased-v1.1')
-
-        # bert 使用卷积转换到transfomer
-        # self.input_tensor = torch.randn(batch, 512, 768)
-        self.conv_layer = nn.Conv1d(512, 500, kernel_size=3, stride=2, padding=1)  # 输入通道数为768，输出通道数为64，卷积核大小为1
-        self.fc_larer = nn.Linear(384, 180)
-        self.batch = batch
-        self.da = da
-        self.r = r
-        self.att_C = att_C
-        self.att_first = nn.Linear(cnn_channels[-1], da)
-        # self.att_first = nn.Linear(-1, da)
-        self.att_first.bias.data.fill_(0)
-        self.att_second = nn.Linear(da, r)
-        self.att_second.bias.data.fill_(0)
-
-        if fc[-1] != 1:
-            fc.append(1)
-        self.fc = nn.ModuleList()
-        self.fc.append(
-                nn.Sequential(
-                    nn.Dropout(p=fc_dropout),
-                    nn.Linear(cnn_channels[-1] * 4, fc[0])
-                )
-            )
-
-        for i in range(len(fc) - 1):
-            self.fc.append(
-                    nn.Sequential(
-                        nn.ReLU(),
-                        nn.Linear(fc[i], fc[i + 1])
-                    )
-                )
-        self.fc.append(nn.Sigmoid())
-        self.fc_dist = nn.Sequential(
-                    nn.Linear(cnn_channels[-1] * 4, cnn_channels[-1]),
-                    nn.ReLU(),
-                    nn.Linear(cnn_channels[-1], 1)
-                )
-
-        self.tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
-        num_cpus = os.cpu_count()
-        self.executor = concurrent.futures.ProcessPoolExecutor(max_workers=num_cpus*2+1)
-
+        # if pos_enc:
+        #     assert seq_len > 0
+        # self.device = device
+        # self.cnn = nn.ModuleList()
+        # self.cnn.append(
+        #     nn.Sequential(
+        #         nn.Conv1d(
+        #             in_channels=in_dim,
+        #             out_channels=cnn_channels[0],
+        #             kernel_size=cnn_sizes[0],
+        #             padding=cnn_sizes[0] // 2),
+        #         nn.BatchNorm1d(cnn_channels[0]),
+        #         nn.LeakyReLU(),
+        #         nn.MaxPool1d(cnn_pool[0])
+        #     )
+        # )
+        # seq_len //= cnn_pool[0]
+        # for i in range(len(cnn_sizes) - 1):
+        #     self.cnn.append(
+        #         nn.Sequential(
+        #             nn.Conv1d(
+        #                 in_channels=cnn_channels[i],
+        #                 out_channels=cnn_channels[i + 1],
+        #                 kernel_size=cnn_sizes[i + 1],
+        #                 padding=cnn_sizes[i + 1] // 2),
+        #             nn.BatchNorm1d(cnn_channels[i + 1]),
+        #             nn.LeakyReLU(),
+        #             nn.MaxPool1d(cnn_pool[i + 1])
+        #         )
+        #     )
+        #     seq_len //= cnn_pool[i + 1]
+        #
+        # if pos_enc:
+        #     self.pos_enc = PositionalEncoding(d_hid=cnn_channels[-1], n_position=seq_len)
+        # else:
+        #     self.pos_enc = None
+        #
+        # if not self.transpose:
+        #     enc_layer = nn.TransformerEncoderLayer(
+        #         d_model=cnn_channels[-1],
+        #         nhead=num_heads,
+        #         dim_feedforward=d_inner,
+        #         batch_first=True
+        #     )
+        # else:
+        #     enc_layer = nn.TransformerEncoderLayer(
+        #         d_model=cnn_channels[-1],
+        #         nhead=num_heads,
+        #         dim_feedforward=d_inner,
+        #     )
+        #
+        # self.encoder = nn.TransformerEncoder(
+        #     enc_layer,
+        #     num_layers=enc_layers
+        # )
+        # # self.encoder1 = transformers.BertModel.from_pretrained('dmis-lab/biobert-base-cased-v1.1')
+        # self.encoder1 = BertModel.from_pretrained('dmis-lab/biobert-base-cased-v1.1')
+        #
+        # # bert 使用卷积转换到transfomer
+        # # self.input_tensor = torch.randn(batch, 512, 768)
+        # self.conv_layer = nn.Conv1d(512, 500, kernel_size=3, stride=2, padding=1)  # 输入通道数为768，输出通道数为64，卷积核大小为1
+        # self.fc_larer = nn.Linear(384, 180)
+        # self.da = da
+        # self.r = r
+        # self.att_C = att_C
+        # self.att_first = nn.Linear(cnn_channels[-1], da)
+        # # self.att_first = nn.Linear(-1, da)
+        # self.att_first.bias.data.fill_(0)
+        # self.att_second = nn.Linear(da, r)
+        # self.att_second.bias.data.fill_(0)
+        #
+        # if fc[-1] != 1:
+        #     fc.append(1)
+        # self.fc = nn.ModuleList()
+        # self.fc.append(
+        #     nn.Sequential(
+        #         nn.Dropout(p=fc_dropout),
+        #         nn.Linear(cnn_channels[-1] * 4, fc[0])
+        #     )
+        # )
+        # self.fc.append(
+        #     nn.Sequential(
+        #         nn.Dropout(p=fc_dropout),
+        #         nn.Linear(376, fc[0])
+        #     )
+        # )
+        # for i in range(len(fc) - 1):
+        #     self.fc.append(
+        #         nn.Sequential(
+        #             nn.ReLU(),
+        #             nn.Linear(fc[i], fc[i + 1])
+        #         )
+        #     )
+        # self.fc.append(nn.Sigmoid())
+        # self.fc_dist = nn.Sequential(
+        #     nn.Linear(cnn_channels[-1] * 4, cnn_channels[-1]),
+        #     nn.ReLU(),
+        #     nn.Linear(cnn_channels[-1], 1)
+        # )
+        #
+        # self.tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
+        # num_cpus = os.cpu_count()
+        # self.executor = concurrent.futures.ProcessPoolExecutor(max_workers=num_cpus * 2 + 1)
+        self.AlexNet = AlexNet(in_channels = 8)
+    # def forward(self, feats, enh_idx, prom_idx, return_att=False):
+    #     # feats: (B, D, S)
+    #     if type(feats) is tuple:
+    #         feats, length = feats
+    #     else:
+    #         length = None
+    #     div = 1
+    #     # for cnn in self.cnn:
+    #     #     div *= cnn[-1].kernel_size
+    #     #     enh_idx = torch.div(enh_idx, cnn[-1].kernel_size, rounding_mode="trunc")
+    #     #     prom_idx = torch.div(prom_idx, cnn[-1].kernel_size, rounding_mode="trunc")
+    #     #     feats = cnn(feats)
+    #     feats = feats.transpose(1, 2)  # -> (B, S, D)
+    #     batch_size, seq_len, feat_dim = feats.size()
+    #     # print(batch_size,seq_len,feat_dim)
+    #     self.batch = batch_size
+    #     # if self.pos_enc is not None:
+    #     #     feats = self.pos_enc(feats)
+    #     # if self.transpose:
+    #     #     feats = feats.transpose(0, 1)
+    #     # temp1 = self.encoder(feats)  # (B, S, D)
+    #     # print(temp1.shape)
+    #     # 对每一个向量进行单独的分词
+    #     # Flatten the CNN output to a 1D tensor
+    #     # print("===========================开始分词============================")
+    #     # input_ids, attention_masks = self.tokenize_batch(feats.detach().cpu())  # 并行分词
+    #     # del feats
+    #     # feats = None
+    #     # with torch.no_grad():
+    #     #     input_ids = torch.cat(input_ids, dim=0).to(self.device)
+    #     #     attention_masks = torch.cat(attention_masks, dim=0).to(self.device)
+    #     #     feats = self.encoder1(input_ids=input_ids, attention_mask=attention_masks).last_hidden_state  # (B, S, D)
+    #     if self.transpose:
+    #         feats = feats.transpose(0, 1)
+    #
+    #     # 对向量进行标准化
+    #     feats = F.normalize(feats, p=2, dim=1)
+    #     feats =self.conv_tensor(feats)
+    #     # out = torch.tanh(self.att_first(feats))  # (B, S, da) (16,512,768)==>( 16, 500, 180)
+    #     out = torch.tanh(self.att_first((feats)))  # (B, S, da)
+    #     # if length is not None:
+    #     #     length = torch.div(length, div, rounding_mode="trunc")
+    #     #     max_len = max(length)
+    #     #     mask = torch.cat((
+    #     #         [torch.cat((torch.ones(1, m, self.da), torch.zeros(1, max_len - m, self.da)), dim=1) for m in length]
+    #     #     ), dim=0)
+    #     #     assert mask.size() == out.size()
+    #     #     out = out * mask.to(out.device)
+    #     #     del mask
+    #     out = F.softmax(self.att_second(out), 1) # (B, S, r)
+    #     att = out.transpose(1, 2) # (B, r, S)
+    #     del out
+    #     seq_embed = torch.matmul(att, feats) # (B, r, D)
+    #     # print(seq_embed.size())
+    #     base_idx = seq_len * torch.arange(batch_size) # .to(feats.device)
+    #     enh_idx = enh_idx.long().view(batch_size) + base_idx
+    #     prom_idx = prom_idx.long().view(batch_size) + base_idx
+    #     feats = feats.reshape(-1, feat_dim)
+    #     seq_embed = torch.cat((
+    #         feats[enh_idx, :].view(batch_size, -1),
+    #         feats[prom_idx, :].view(batch_size, -1),
+    #         seq_embed.mean(dim=1).view(batch_size, -1),
+    #         seq_embed.max(dim=1)[0].view(batch_size, -1)
+    #     ), axis=1)
+    #     del feats
+    #     # feats = torch.cat((feats.max(dim=1)[0].squeeze(1), feats.mean(dim=1).squeeze(1)), dim=1)
+    #     print(seq_embed.shape)
+    #     dists = self.fc_dist(seq_embed)
+    #     for fc in self.fc:
+    #         seq_embed = fc(seq_embed)
+    #
+    #     if return_att:
+    #         return seq_embed, dists, att
+    #     else:
+    #         del att
+    #     return seq_embed
     def forward(self, feats, enh_idx, prom_idx, return_att=False):
-        # feats: (B, D, S)
-        if type(feats) is tuple:
-            feats, length = feats
-        else:
-            length = None
-        div = 1
-        for cnn in self.cnn:
-            div *= cnn[-1].kernel_size
-            enh_idx = torch.div(enh_idx, cnn[-1].kernel_size, rounding_mode="trunc")
-            prom_idx = torch.div(prom_idx, cnn[-1].kernel_size, rounding_mode="trunc")
-            feats = cnn(feats)
-        feats = feats.transpose(1, 2)  # -> (B, S, D)
-        batch_size, seq_len, feat_dim = feats.size()
-        if self.pos_enc is not None:
-            feats = self.pos_enc(feats)
-        if self.transpose:
-            feats = feats.transpose(0, 1)
-        # temp1 = self.encoder(feats)  # (B, S, D)
-        # print(temp1.shape)
-        # 对每一个向量进行单独的分词
-        # Flatten the CNN output to a 1D tensor
-        # print("===========================开始分词============================")
-        input_ids, attention_masks = self.tokenize_batch(feats.detach().cpu())  # 并行分词
-        del feats
-        feats = None
-        with torch.no_grad():
-            input_ids = torch.cat(input_ids, dim=0).to(self.device)
-            attention_masks = torch.cat(attention_masks, dim=0).to(self.device)
-            feats = self.encoder1(input_ids=input_ids, attention_mask=attention_masks).last_hidden_state  # (B, S, D)
-        if self.transpose:
-            feats = feats.transpose(0, 1)
-        feats =self.conv_tensor(feats)
-        # out = torch.tanh(self.att_first(feats))  # (B, S, da) (16,512,768)==>( 16, 500, 180)
-        out = torch.tanh(self.att_first((feats)))  # (B, S, da)
-        if length is not None:
-            length = torch.div(length, div, rounding_mode="trunc")
-            max_len = max(length)
-            mask = torch.cat((
-                [torch.cat((torch.ones(1, m, self.da), torch.zeros(1, max_len - m, self.da)), dim=1) for m in length]
-            ), dim=0)
-            assert mask.size() == out.size()
-            out = out * mask.to(out.device)
-            del mask
-        out = F.softmax(self.att_second(out), 1) # (B, S, r)
-        att = out.transpose(1, 2) # (B, r, S)
-        del out
-        seq_embed = torch.matmul(att, feats) # (B, r, D)
-        # print(seq_embed.size())
-        base_idx = seq_len * torch.arange(batch_size) # .to(feats.device)
-        enh_idx = enh_idx.long().view(batch_size) + base_idx
-        prom_idx = prom_idx.long().view(batch_size) + base_idx
-        feats = feats.reshape(-1, feat_dim)
-        seq_embed = torch.cat((
-            feats[enh_idx, :].view(batch_size, -1),
-            feats[prom_idx, :].view(batch_size, -1),
-            seq_embed.mean(dim=1).view(batch_size, -1),
-            seq_embed.max(dim=1)[0].view(batch_size, -1)
-        ), axis=1)
-        del feats
-        # feats = torch.cat((feats.max(dim=1)[0].squeeze(1), feats.mean(dim=1).squeeze(1)), dim=1)
-        dists = self.fc_dist(seq_embed)
-
-        for fc in self.fc:
-            seq_embed = fc(seq_embed)
-
-        if return_att:
-            return seq_embed, dists, att
-        else:
-            del att
-        return seq_embed
+        # print(feats.shape)#(64,8,5000)
+        # feats = feats.permute(0, 2, 1)
+        # print("==========================================")
+        # dists = 0
+        classifier,regression = self.AlexNet.forward(feats)
+        return classifier,regression, None
 
     def l2_matrix_norm(self, m):
         return torch.sum(torch.sum(torch.sum(m ** 2, 1), 1) ** 0.5).type(torch.cuda.DoubleTensor)
@@ -278,8 +296,8 @@ class TransEPI(nn.Module):
         # 将原始张量进行卷积操作
         feats = self.conv_layer(feats)
         feats = feats.view(self.batch, 500, -1)
-        feats= self.fc_larer(feats)
-        return feats
+        classifier, regression = self.fc_larer(feats)
+        return classifier, regression
 
     def tokenize_batch(self, feats):
         '''
@@ -304,9 +322,9 @@ class TransEPI(nn.Module):
         return input_ids, attention_masks
 
 
-def closeProcessPool(self):
-    # 关闭线程池
-    self.executor.shutdown()
+    def closeProcessPool(self):
+        # 关闭线程池
+        self.executor.shutdown()
 
 
 # class TransformerModule(nn.Module):

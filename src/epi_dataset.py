@@ -102,7 +102,7 @@ class EPIDataset(Dataset):
             self.feat_dim += 1
         if self.sin_encoding:
             self.feat_dim += 1
-        # # 进行数据的正负例均衡采样
+        # 进行数据的正负例均衡采样
         # self.samples.append((
         #     start_bin + shift, stop_bin + shift,
         #     left_pad_bin, right_pad_bin,
@@ -110,25 +110,25 @@ class EPIDataset(Dataset):
         #     cell, chrom, np.log2(1 + 500000 / float(dist)),
         #     int(label), knock_range
         # ))
-        # length = len(self.samples)
-        # idx_pos = []
-        # idx_neg = []
-        # for i in range(length):
-        #     if self.samples[i][-2] == 1:
-        #         idx_pos.append(self.samples[i])
-        #     elif self.samples[i][-2] == 0:
-        #         idx_neg.append(self.samples[i])
-        #     else:
-        #         print("发生错误")
-        #         print(self.samples[i])
-        #         sys.exit(0)
-        # if len(idx_neg) > len(idx_pos):
-        #     sample = random.sample(idx_neg, len(idx_pos))
-        #     sample = sample + idx_pos
-        #     random.shuffle(sample)
-        #     random.shuffle(sample)
-        #     random.shuffle(sample)
-        #     self.samples = sample
+        length = len(self.samples)
+        idx_pos = []
+        idx_neg = []
+        for i in range(length):
+            if self.samples[i][-2] == 1:
+                idx_pos.append(self.samples[i])
+            elif self.samples[i][-2] == 0:
+                idx_neg.append(self.samples[i])
+            else:
+                print("发生错误")
+                print(self.samples[i])
+                sys.exit(0)
+        if len(idx_neg) > len(idx_pos):
+            sample = random.sample(idx_neg, len(idx_pos))
+            sample = sample + idx_pos
+            random.shuffle(sample)
+            random.shuffle(sample)
+            random.shuffle(sample)
+            self.samples = sample
     def load_datasets(self):
         for fn in self.datasets:
             with custom_open(fn) as infile:
